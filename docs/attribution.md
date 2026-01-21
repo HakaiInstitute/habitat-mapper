@@ -1,5 +1,8 @@
 # Attribution
 
+We are grateful to all contributors who have helped improve Habitat-Mapper with code and data contributions, bug
+reports, testing, and feedback. Thank you!
+
 ## Development and Support
 
 **Habitat-Mapper** was developed by the [Hakai Institute](https://hakai.org), a marine research organization based in
@@ -15,12 +18,12 @@ of machine learning training data used to build the kelp detection and mussel an
 ### The Nature Conservancy of California
 
 [The Nature Conservancy of California](https://www.nature.org/en-us/about-us/where-we-work/united-states/california/)
-generously provided drone-based kelp imagery that was used to help train the kelp detection models. This high-resolution
-aerial data was instrumental in improving model accuracy and robustness.
+generously provided drone-based kelp imagery used to help train the **kelp-rgb** and **kelp-rgbi** models. This
+high-resolution aerial data was instrumental in improving model accuracy and robustness.
 
 ### Dr. Katherine Cavanaugh
 
-[Dr. Katherine Cavanaugh](https://scholar.google.com/citations?user=Luu6YqYAAAAJ&hl=en) *et. al.* contributed valuable
+[Dr. Katherine Cavanaugh](https://scholar.google.com/citations?user=Luu6YqYAAAAJ&hl=en) *et al.* contributed valuable
 model development experience as well as expert annotations of Planet Labs satellite imagery that were used to help
 train the **kelp-ps8b** model[^1]. We are incredibly grateful for her contributions and support of this project.
 
@@ -40,11 +43,6 @@ If you use Habitat-Mapper in your research, please cite the software:
     url = {https://github.com/HakaiInstitute/habitat-mapper}
     }
     ```
-
-## Acknowledgments
-
-We are grateful to all contributors who have helped improve Habitat-Mapper through code contributions, bug reports, and
-feedback.
 
 [^1]: Cavanaugh, K.C., Cavanaugh, K.C., Berberian, L.A. et al. High-resolution planet Dove data identify local drivers
     of kelp canopy persistence. *Commun Earth Environ* (2026).
