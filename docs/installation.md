@@ -19,11 +19,11 @@ Please select the installation method that best matches your experience level.
 
     === "Windows"
         ```powershell
-        powershell -ExecutionPolicy ByPass -c "irm [https://astral.sh/uv/install.ps1](https://astral.sh/uv/install.ps1) | iex"
+        powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
         ```
     === "MacOS/Linux"
         ```bash
-        curl -LsSf [https://astral.sh/uv/install.sh](https://astral.sh/uv/install.sh) | sh
+        curl -LsSf https://astral.sh/uv/install.sh | sh
         ```
 
     *Restart your terminal after installation to ensure the `uv` command is recognized.*
