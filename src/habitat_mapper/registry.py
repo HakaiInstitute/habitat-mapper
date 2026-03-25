@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -48,7 +47,6 @@ class ModelRegistry:
 
         Raises:
             TypeError: If model_config is not an instance of ModelConfig.
-            ValueError: If the model class cannot be loaded.
         """
         if not isinstance(model_config, ModelConfig):
             raise TypeError("model_config must be an instance of ModelConfig")
@@ -59,14 +57,9 @@ class ModelRegistry:
         if name not in self._models:
             self._models[name] = {}
 
-        # Dynamic class loading
-        try:
-            module_path, class_name = model_config.cls_name.rsplit(".", 1)
-            module = importlib.import_module(module_path)
-            model_class = getattr(module, class_name)
-            self._models[name][revision] = model_class(model_config)
-        except (ImportError, AttributeError, ValueError) as e:
-            raise ValueError(f"Failed to load model class '{model_config.cls_name}' for model '{name}': {e}")
+        # model_cls is resolved by Pydantic's ImportString
+        model_class = model_config.model_cls
+        self._models[name][revision] = model_class(model_config)
 
     @classmethod
     def from_config_dir(cls, config_dir: str | Path) -> ModelRegistry:

@@ -1,5 +1,5 @@
 {
-  "cls_name": "habitat_mapper.model.LegacyKelpRGBModel",
+  "model_cls": "habitat_mapper.model.LegacyKelpRGBModel",
   "name": "kelp-rgb",
   "revision": "20240722",
   "description": "Kelp segmentation model for RGB drone imagery.",
