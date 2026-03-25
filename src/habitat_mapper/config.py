@@ -144,21 +144,6 @@ class ModelConfig(BaseModel):
         Raises:
             TypeError: If input_path is not compatible with the reader
         """
-        # Auto-inject auxiliary file paths from dependencies if available
-        if self.dependencies:
-            dep_paths = self.local_dependency_paths
-
-            # Look for known auxiliary file patterns and inject them into reader_kwargs
-            for filename, path in dep_paths.items():
-                # Match bathymetry files (e.g., bathymetry_10m_cog.tif)
-                if "bathymetry" in filename.lower() and "bathymetry_path" not in self.reader_kwargs:
-                    self.reader_kwargs["bathymetry_path"] = path
-
-                # Match substrate files (e.g., substrate_20m_cog.tif)
-                if "substrate" in filename.lower() and "substrate_path" not in self.reader_kwargs:
-                    self.reader_kwargs["substrate_path"] = path
-
-        # Instantiate the reader
         try:
             return self.reader_cls(input_path, **self.reader_kwargs)
         except TypeError as e:
