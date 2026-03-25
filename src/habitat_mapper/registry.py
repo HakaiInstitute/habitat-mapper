@@ -57,9 +57,7 @@ class ModelRegistry:
         if name not in self._models:
             self._models[name] = {}
 
-        # model_cls is resolved by Pydantic's ImportString
-        model_class = model_config.model_cls
-        self._models[name][revision] = model_class(model_config)
+        self._models[name][revision] = model_config.model_cls(model_config)
 
     @classmethod
     def from_config_dir(cls, config_dir: str | Path) -> ModelRegistry:
