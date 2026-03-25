@@ -6,6 +6,10 @@ repos:
     rev: v3.20.0
     hooks:
       - id: pyupgrade
+  - repo: https://github.com/srstevenson/nb-clean
+    rev: 4.0.1
+    hooks:
+      - id: nb-clean
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
