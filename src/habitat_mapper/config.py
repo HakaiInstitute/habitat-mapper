@@ -147,7 +147,7 @@ class ModelConfig(BaseModel):
         try:
             return self.reader_cls(input_path, **self.reader_kwargs)
         except TypeError as e:
-            # Filter out unknown kwargs for readers that don't accept them
+            # Re-raise with additional context about the reader and provided arguments
             raise TypeError(f"Cannot instantiate {self.reader_cls.__name__} with the provided arguments: {e}") from e
 
 
