@@ -144,35 +144,11 @@ class ModelConfig(BaseModel):
         Raises:
             TypeError: If input_path is not compatible with the reader
         """
-        # reader_cls is resolved by Pydantic's ImportString
-        reader_class = self.reader_cls
-
-        # Prepare kwargs for reader initialization
-        reader_init_kwargs = {
-            **self.reader_kwargs,
-        }
-
-        # Auto-inject auxiliary file paths from dependencies if available
-        # This allows readers like SAFEReader to access downloaded dependency files
-        if self.dependencies:
-            dep_paths = self.local_dependency_paths
-
-            # Look for known auxiliary file patterns and inject them into reader_kwargs
-            for filename, path in dep_paths.items():
-                # Match bathymetry files (e.g., bathymetry_10m_cog.tif)
-                if "bathymetry" in filename.lower() and "bathymetry_path" not in reader_init_kwargs:
-                    reader_init_kwargs["bathymetry_path"] = path
-
-                # Match substrate files (e.g., substrate_20m_cog.tif)
-                if "substrate" in filename.lower() and "substrate_path" not in reader_init_kwargs:
-                    reader_init_kwargs["substrate_path"] = path
-
-        # Instantiate the reader
         try:
-            return reader_class(input_path, **reader_init_kwargs)
+            return self.reader_cls(input_path, **self.reader_kwargs)
         except TypeError as e:
             # Filter out unknown kwargs for readers that don't accept them
-            raise TypeError(f"Cannot instantiate {self.reader_cls} with the provided arguments: {e}") from e
+            raise TypeError(f"Cannot instantiate {self.reader_cls.__name__} with the provided arguments: {e}") from e
 
 
 class ProcessingConfig(BaseModel):
