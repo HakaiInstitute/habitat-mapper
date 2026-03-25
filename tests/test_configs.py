@@ -8,7 +8,7 @@ from habitat_mapper.config import ModelConfig
 from habitat_mapper.registry import ModelRegistry
 
 CONFIGS_DIR = Path(__file__).parent.parent / "src" / "habitat_mapper" / "configs"
-CONFIG_FILES = list(CONFIGS_DIR.glob("*.json"))
+CONFIG_FILES = sorted(CONFIGS_DIR.glob("*.json"), key=lambda p: p.name)
 
 
 @pytest.mark.parametrize("config_file", CONFIG_FILES, ids=[f.name for f in CONFIG_FILES])
