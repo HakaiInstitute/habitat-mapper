@@ -1,13 +1,10 @@
 """Configuration models for segmentation processing and ONNX models."""
 
-from __future__ import annotations
-
-import importlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from loguru import logger
-from pydantic import AfterValidator, BaseModel, Field, PositiveInt
+from pydantic import AfterValidator, BaseModel, Field, ImportString, PositiveInt, TypeAdapter, model_validator
 
 from habitat_mapper.utils import _all_positive, _is_odd_or_zero, download_dependencies
 
@@ -18,7 +15,9 @@ if TYPE_CHECKING:
 class ModelConfig(BaseModel):
     """ONNXModel configuration for ONNX semantic segmentation models."""
 
-    cls_name: Annotated[str, "For dynamic loading of model class in registry"] = "habitat_mapper.model.ONNXModel"
+    model_cls: Annotated[ImportString, "For dynamic loading of model class in registry"] = (
+        "habitat_mapper.model.ONNXModel"
+    )
     name: Annotated[str, "The name of the model for the model registry"]
     description: Annotated[str | None, "Brief description of the model for the model registry"] = None
     revision: Annotated[str, "Model revision number. Date based versioning is preferred"]
@@ -66,14 +65,29 @@ class ModelConfig(BaseModel):
     ] = 0
     nodata_value: Annotated[int, "The nodata value for the output raster"] = 0
 
-    reader_class_name: Annotated[
-        str,
+    reader_cls: Annotated[
+        ImportString,
         "Fully qualified class name of the ImageReader to use (e.g., 'habitat_mapper.reader.TIFFReader')",
     ] = "habitat_mapper.reader.TIFFReader"
     reader_kwargs: Annotated[
         dict[str, Any],
         "Additional keyword arguments to pass to the reader constructor",
-    ] = {}
+    ] = Field(default_factory=dict)
+
+    _import_string_adapter = TypeAdapter(ImportString)
+
+    @model_validator(mode="after")
+    def _resolve_import_strings(self) -> "ModelConfig":
+        """Resolve ImportString defaults that Pydantic doesn't validate.
+
+        Returns:
+            The validated ModelConfig instance with resolved import strings.
+        """
+        if isinstance(self.model_cls, str):
+            self.model_cls = self._import_string_adapter.validate_python(self.model_cls)
+        if isinstance(self.reader_cls, str):
+            self.reader_cls = self._import_string_adapter.validate_python(self.reader_cls)
+        return self
 
     @property
     def local_dependency_paths(self) -> dict[str, Path]:
@@ -118,7 +132,7 @@ class ModelConfig(BaseModel):
 
         return model_path
 
-    def get_reader(self, input_path: str | Path) -> ImageReader:
+    def get_reader(self, input_path: str | Path) -> "ImageReader":
         """Instantiate the configured ImageReader for the given input.
 
         Args:
@@ -128,42 +142,13 @@ class ModelConfig(BaseModel):
             An instantiated ImageReader configured for this model
 
         Raises:
-            ValueError: If the reader class cannot be imported
             TypeError: If input_path is not compatible with the reader
         """
-        # Dynamically import and instantiate the reader class
         try:
-            module_name, class_name = self.reader_class_name.rsplit(".", 1)
-            module = importlib.import_module(module_name)
-            reader_class = getattr(module, class_name)
-        except (ValueError, ImportError, AttributeError) as e:
-            raise ValueError(f"Cannot load reader class '{self.reader_class_name}': {e}") from e
-
-        # Prepare kwargs for reader initialization
-        reader_init_kwargs = {
-            **self.reader_kwargs,
-        }
-
-        # Auto-inject auxiliary file paths from dependencies if available
-        if self.dependencies:
-            dep_paths = self.local_dependency_paths
-
-            # Look for known auxiliary file patterns and inject them into reader_kwargs
-            for filename, path in dep_paths.items():
-                # Match bathymetry files (e.g., bathymetry_10m_cog.tif)
-                if "bathymetry" in filename.lower() and "bathymetry_path" not in reader_init_kwargs:
-                    reader_init_kwargs["bathymetry_path"] = path
-
-                # Match substrate files (e.g., substrate_20m_cog.tif)
-                if "substrate" in filename.lower() and "substrate_path" not in reader_init_kwargs:
-                    reader_init_kwargs["substrate_path"] = path
-
-        # Instantiate the reader
-        try:
-            return reader_class(input_path, **reader_init_kwargs)
+            return self.reader_cls(input_path, **self.reader_kwargs)
         except TypeError as e:
-            # Filter out unknown kwargs for readers that don't accept them
-            raise TypeError(f"Cannot instantiate {self.reader_class_name} with the provided arguments: {e}") from e
+            # Re-raise with additional context about the reader and provided arguments
+            raise TypeError(f"Cannot instantiate {self.reader_cls.__name__} with the provided arguments: {e}") from e
 
 
 class ProcessingConfig(BaseModel):
