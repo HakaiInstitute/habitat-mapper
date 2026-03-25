@@ -72,7 +72,7 @@ class ModelConfig(BaseModel):
     reader_kwargs: Annotated[
         dict[str, Any],
         "Additional keyword arguments to pass to the reader constructor",
-    ] = {}
+    ] = Field(default_factory=dict)
 
     _import_string_adapter = TypeAdapter(ImportString)
 
