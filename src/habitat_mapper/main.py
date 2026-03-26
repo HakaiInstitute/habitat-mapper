@@ -367,7 +367,7 @@ def segment(
             validator=_positive_odd_int_or_zero_validator,
             name=["--blur"],
         ),
-    ] = 5,
+    ] = 0,
     morph_kernel_size: Annotated[
         int,
         Parameter(

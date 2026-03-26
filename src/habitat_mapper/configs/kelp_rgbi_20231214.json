@@ -1,5 +1,5 @@
 {
-  "cls_name": "habitat_mapper.model.LegacyKelpRGBIModel",
+  "model_cls": "habitat_mapper.model.LegacyKelpRGBIModel",
   "name": "kelp-rgbi",
   "revision": "20231214",
   "description": "Kelp segmentation model for 4-band RGB+NIR drone imagery.",
