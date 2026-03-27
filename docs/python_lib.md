@@ -70,6 +70,27 @@ model.process(
 )
 ```
 
+### Quiet Mode
+
+Pass `quiet=True` to suppress all progress bars and log messages. This is useful when processing many files in a loop where the per-file output would be noisy:
+
+```python
+from pathlib import Path
+from habitat_mapper import model_registry
+
+model = model_registry['kelp-rgb']
+inputs = Path("./images").glob("*.tif")
+
+for img_path in inputs:
+    model.process(
+        img_path=img_path,
+        output_path=Path("./outputs") / img_path.name,
+        quiet=True,
+    )
+```
+
+Errors are still raised as exceptions in quiet mode, so failures are never silently swallowed.
+
 ### Advanced Configuration
 
 For more control over the processing, you can access the underlying configuration:
