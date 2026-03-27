@@ -4,7 +4,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from loguru import logger
-from pydantic import AfterValidator, BaseModel, Field, ImportString, PositiveInt, TypeAdapter, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    ImportString,
+    PositiveInt,
+    TypeAdapter,
+    model_validator,
+)
 
 from habitat_mapper.utils import _all_positive, _is_odd_or_zero, download_dependencies
 
@@ -89,24 +97,28 @@ class ModelConfig(BaseModel):
             self.reader_cls = self._import_string_adapter.validate_python(self.reader_cls)
         return self
 
-    @property
-    def local_dependency_paths(self) -> dict[str, Path]:
+    def get_local_dependency_paths(self, quiet: bool = False) -> dict[str, Path]:
         """Get local paths to all dependency files.
 
         Downloads dependencies in parallel if they are URLs and not yet cached.
 
+        Args:
+            quiet: If True, suppress download progress bars.
+
         Returns:
             Dict mapping filenames to local paths for all dependencies
         """
-        dep_paths = download_dependencies(self)
+        dep_paths = download_dependencies(self, quiet=quiet)
         # Create a dict mapping filename to path for easy lookup
         return {path.name: path for path in dep_paths}
 
-    @property
-    def local_model_path(self) -> Path:
+    def get_local_model_path(self, quiet: bool = False) -> Path:
         """Get the local path to the ONNX model file.
 
         Downloads all dependencies (including the model) if needed.
+
+        Args:
+            quiet: If True, suppress download progress bars.
 
         Returns:
             Path to the local ONNX model file
@@ -115,7 +127,7 @@ class ModelConfig(BaseModel):
             ValueError: If model_filename not found in dependencies
         """
         # Download all dependencies (this will be cached on subsequent calls)
-        dep_paths = self.local_dependency_paths
+        dep_paths = self.get_local_dependency_paths(quiet=quiet)
 
         # Find the model file by name
         if self.model_filename not in dep_paths:

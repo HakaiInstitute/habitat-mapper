@@ -394,7 +394,7 @@ def segment(
         Parameter(
             name=["--quiet", "-q"],
             negative="--no-quiet",
-            help="Suppress all progress output and log messages.",
+            help="Suppress progress output and non-error log messages (errors are still shown).",
         ),
     ] = False,
 ) -> None:

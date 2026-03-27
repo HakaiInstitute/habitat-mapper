@@ -36,6 +36,7 @@ class ONNXModel:
         """
         self.cfg = config
         self.__ort_sess: ort.InferenceSession | None = None
+        self._quiet: bool = False
 
     @classmethod
     def from_json_config(cls, config_path: str) -> ONNXModel:
@@ -69,7 +70,7 @@ class ONNXModel:
             return self.__ort_sess
 
         # Get local model path (handles download if needed)
-        local_model_path = self.cfg.local_model_path
+        local_model_path = self.cfg.get_local_model_path(quiet=self._quiet)
 
         # Load appropriate ONNX providers for OS capabilities
         providers = get_ort_providers()
@@ -247,19 +248,23 @@ class ONNXModel:
             blur_kernel_size: Size of median blur kernel (must be odd)
             morph_kernel_size: Size of morphological kernel (0 to disable)
             band_order: A list of integers used to rearrange the input image channels. Indexed from 1 (like GDAL).
-            quiet: If True, suppress all progress bars and log messages.
+            quiet: If True, suppress progress bars during processing; log messages are not affected.
 
         """
-        processor = ImageProcessor.from_model(
-            model=self,
-            batch_size=batch_size,
-            crop_size=crop_size,
-            blur_kernel_size=blur_kernel_size,
-            morph_kernel_size=morph_kernel_size,
-            band_order=band_order,
-            quiet=quiet,
-        )
-        processor.run(img_path=img_path, output_path=output_path)
+        self._quiet = quiet
+        try:
+            processor = ImageProcessor.from_model(
+                model=self,
+                batch_size=batch_size,
+                crop_size=crop_size,
+                blur_kernel_size=blur_kernel_size,
+                morph_kernel_size=morph_kernel_size,
+                band_order=band_order,
+                quiet=quiet,
+            )
+            processor.run(img_path=img_path, output_path=output_path)
+        finally:
+            self._quiet = False
 
 
 class LegacyKelpRGBModel(ONNXModel):

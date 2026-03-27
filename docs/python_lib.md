@@ -72,7 +72,7 @@ model.process(
 
 ### Quiet Mode
 
-Pass `quiet=True` to suppress all progress bars and log messages. This is useful when processing many files in a loop where the per-file output would be noisy:
+Pass `quiet=True` to suppress all Rich progress bars (segmenting, post-processing, and downloads). This is useful when processing many files in a loop where the per-file output would be noisy:
 
 ```python
 from pathlib import Path

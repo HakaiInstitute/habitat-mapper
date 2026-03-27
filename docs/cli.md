@@ -44,7 +44,7 @@ Apply a segmentation model to an input raster and save the output.
 │    MORPH-KERNEL --morph-kernel --morph      Size of morphological kernel (must be odd, 0 to disable) [default: 0] │
 │    BAND-ORDER --band-order              -b  Band reordering flag for rearranging bands into RGB(+NIR) order when  │
 │      --empty-band-order                     necessary.                                                            │
-│    QUIET --quiet --no-quiet             -q  Suppress all progress output and log messages. [default: False]       │
+│    QUIET --quiet --no-quiet             -q  Suppress progress output and non-error log messages. [default: False] │
 ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
