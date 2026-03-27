@@ -167,7 +167,7 @@ class ImageProcessor:
                     TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
                     TimeElapsedColumn(),
                     TimeRemainingColumn(),
-                    console=Console(quiet=self.quiet),
+                    console=Console(quiet=True) if self.quiet else None,
                 ) as progress:
                     task = progress.add_task("Processing", total=len(window_batches))
                     for window_batch in window_batches:
@@ -357,7 +357,7 @@ class ImageProcessor:
                     BarColumn(),
                     TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
                     TimeElapsedColumn(),
-                    console=Console(quiet=self.quiet),
+                    console=Console(quiet=True) if self.quiet else None,
                 ) as progress:
                     task = progress.add_task("Post-processing", total=len(windows_list))
                     for window in windows_list:

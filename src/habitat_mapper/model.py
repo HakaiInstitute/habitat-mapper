@@ -250,22 +250,16 @@ class ONNXModel:
             quiet: If True, suppress all progress bars and log messages.
 
         """
-        if quiet:
-            logger.disable("habitat_mapper")
-        try:
-            processor = ImageProcessor.from_model(
-                model=self,
-                batch_size=batch_size,
-                crop_size=crop_size,
-                blur_kernel_size=blur_kernel_size,
-                morph_kernel_size=morph_kernel_size,
-                band_order=band_order,
-                quiet=quiet,
-            )
-            processor.run(img_path=img_path, output_path=output_path)
-        finally:
-            if quiet:
-                logger.enable("habitat_mapper")
+        processor = ImageProcessor.from_model(
+            model=self,
+            batch_size=batch_size,
+            crop_size=crop_size,
+            blur_kernel_size=blur_kernel_size,
+            morph_kernel_size=morph_kernel_size,
+            band_order=band_order,
+            quiet=quiet,
+        )
+        processor.run(img_path=img_path, output_path=output_path)
 
 
 class LegacyKelpRGBModel(ONNXModel):

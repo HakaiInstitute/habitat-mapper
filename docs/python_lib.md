@@ -89,7 +89,7 @@ for img_path in inputs:
     )
 ```
 
-Errors are still raised as exceptions in quiet mode, so failures are never silently swallowed.
+Errors in quiet mode still cause processing to fail (either by raising an exception or exiting with a non-zero status), so failures are never silently ignored.
 
 ### Advanced Configuration
 
