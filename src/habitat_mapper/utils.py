@@ -17,7 +17,6 @@ import onnxruntime as ort
 import platformdirs
 import requests
 from loguru import logger
-from rich.console import Console
 from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TaskID, TextColumn, TransferSpeedColumn
 from rich.prompt import Confirm
 
@@ -191,7 +190,7 @@ def download_dependencies(model_config: ModelConfig, quiet: bool = False) -> lis
             BarColumn(),
             DownloadColumn(),
             TransferSpeedColumn(),
-            console=Console(quiet=True) if quiet else None,
+            disable=quiet,
         ) as progress:
             # Create a task for each download
             tasks = {}

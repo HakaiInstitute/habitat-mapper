@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from types import TracebackType
+    from typing import Self
 
 
 class ProgressTask(Protocol):
@@ -19,7 +20,7 @@ class ProgressTask(Protocol):
 class ProgressReporter(Protocol):
     """Context manager that creates and tracks progress tasks."""
 
-    def __enter__(self) -> ProgressReporter:
+    def __enter__(self) -> Self:
         """Enter the progress context."""
         ...
 
@@ -45,7 +46,7 @@ class _NullTask:
 class NullProgressReporter:
     """No-op reporter that produces no output. Use for quiet mode."""
 
-    def __enter__(self) -> NullProgressReporter:
+    def __enter__(self) -> Self:
         """Enter the progress context.
 
         Returns:
@@ -90,7 +91,7 @@ class RichProgressReporter:
             TimeRemainingColumn(),
         )
 
-    def __enter__(self) -> RichProgressReporter:
+    def __enter__(self) -> Self:
         """Enter the progress context.
 
         Returns:
