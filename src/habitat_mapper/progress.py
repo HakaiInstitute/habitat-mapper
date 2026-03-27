@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, Self
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from types import TracebackType
+    from typing import Self
 
 
 class ProgressTask(Protocol):
