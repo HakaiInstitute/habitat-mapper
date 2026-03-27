@@ -10,7 +10,6 @@ from pydantic import (
     Field,
     ImportString,
     PositiveInt,
-    PrivateAttr,
     TypeAdapter,
     model_validator,
 )
@@ -84,7 +83,6 @@ class ModelConfig(BaseModel):
     ] = Field(default_factory=dict)
 
     _import_string_adapter = TypeAdapter(ImportString)
-    _quiet: bool = PrivateAttr(default=False)
 
     @model_validator(mode="after")
     def _resolve_import_strings(self) -> "ModelConfig":
@@ -99,24 +97,28 @@ class ModelConfig(BaseModel):
             self.reader_cls = self._import_string_adapter.validate_python(self.reader_cls)
         return self
 
-    @property
-    def local_dependency_paths(self) -> dict[str, Path]:
+    def get_local_dependency_paths(self, quiet: bool = False) -> dict[str, Path]:
         """Get local paths to all dependency files.
 
         Downloads dependencies in parallel if they are URLs and not yet cached.
 
+        Args:
+            quiet: If True, suppress download progress bars.
+
         Returns:
             Dict mapping filenames to local paths for all dependencies
         """
-        dep_paths = download_dependencies(self, quiet=self._quiet)
+        dep_paths = download_dependencies(self, quiet=quiet)
         # Create a dict mapping filename to path for easy lookup
         return {path.name: path for path in dep_paths}
 
-    @property
-    def local_model_path(self) -> Path:
+    def get_local_model_path(self, quiet: bool = False) -> Path:
         """Get the local path to the ONNX model file.
 
         Downloads all dependencies (including the model) if needed.
+
+        Args:
+            quiet: If True, suppress download progress bars.
 
         Returns:
             Path to the local ONNX model file
@@ -125,7 +127,7 @@ class ModelConfig(BaseModel):
             ValueError: If model_filename not found in dependencies
         """
         # Download all dependencies (this will be cached on subsequent calls)
-        dep_paths = self.local_dependency_paths
+        dep_paths = self.get_local_dependency_paths(quiet=quiet)
 
         # Find the model file by name
         if self.model_filename not in dep_paths:

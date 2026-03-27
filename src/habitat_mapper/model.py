@@ -36,6 +36,7 @@ class ONNXModel:
         """
         self.cfg = config
         self.__ort_sess: ort.InferenceSession | None = None
+        self._quiet: bool = False
 
     @classmethod
     def from_json_config(cls, config_path: str) -> ONNXModel:
@@ -69,7 +70,7 @@ class ONNXModel:
             return self.__ort_sess
 
         # Get local model path (handles download if needed)
-        local_model_path = self.cfg.local_model_path
+        local_model_path = self.cfg.get_local_model_path(quiet=self._quiet)
 
         # Load appropriate ONNX providers for OS capabilities
         providers = get_ort_providers()
@@ -250,7 +251,7 @@ class ONNXModel:
             quiet: If True, suppress progress bars during processing; log messages are not affected.
 
         """
-        self.cfg._quiet = quiet
+        self._quiet = quiet
         try:
             processor = ImageProcessor.from_model(
                 model=self,
@@ -263,7 +264,7 @@ class ONNXModel:
             )
             processor.run(img_path=img_path, output_path=output_path)
         finally:
-            self.cfg._quiet = False
+            self._quiet = False
 
 
 class LegacyKelpRGBModel(ONNXModel):
