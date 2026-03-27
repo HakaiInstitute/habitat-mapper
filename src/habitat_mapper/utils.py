@@ -17,6 +17,7 @@ import onnxruntime as ort
 import platformdirs
 import requests
 from loguru import logger
+from rich.console import Console
 from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, TaskID, TextColumn, TransferSpeedColumn
 from rich.prompt import Confirm
 
@@ -146,11 +147,12 @@ def _download_single_dependency(
         return (dependency_url, local_path, e)
 
 
-def download_dependencies(model_config: ModelConfig) -> list[Path]:
+def download_dependencies(model_config: ModelConfig, quiet: bool = False) -> list[Path]:
     """Download all dependencies for a model in parallel.
 
     Args:
         model_config: The model configuration containing dependency URLs
+        quiet: If True, suppress download progress bars.
 
     Returns:
         List of paths to downloaded dependency files
@@ -189,7 +191,7 @@ def download_dependencies(model_config: ModelConfig) -> list[Path]:
             BarColumn(),
             DownloadColumn(),
             TransferSpeedColumn(),
-            console=None,  # Use default console
+            console=Console(quiet=True) if quiet else None,
         ) as progress:
             # Create a task for each download
             tasks = {}

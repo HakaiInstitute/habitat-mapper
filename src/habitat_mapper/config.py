@@ -4,7 +4,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from loguru import logger
-from pydantic import AfterValidator, BaseModel, Field, ImportString, PositiveInt, TypeAdapter, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    ImportString,
+    PositiveInt,
+    PrivateAttr,
+    TypeAdapter,
+    model_validator,
+)
 
 from habitat_mapper.utils import _all_positive, _is_odd_or_zero, download_dependencies
 
@@ -75,6 +84,7 @@ class ModelConfig(BaseModel):
     ] = Field(default_factory=dict)
 
     _import_string_adapter = TypeAdapter(ImportString)
+    _quiet: bool = PrivateAttr(default=False)
 
     @model_validator(mode="after")
     def _resolve_import_strings(self) -> "ModelConfig":
@@ -98,7 +108,7 @@ class ModelConfig(BaseModel):
         Returns:
             Dict mapping filenames to local paths for all dependencies
         """
-        dep_paths = download_dependencies(self)
+        dep_paths = download_dependencies(self, quiet=self._quiet)
         # Create a dict mapping filename to path for easy lookup
         return {path.name: path for path in dep_paths}
 

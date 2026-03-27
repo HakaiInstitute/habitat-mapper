@@ -247,19 +247,23 @@ class ONNXModel:
             blur_kernel_size: Size of median blur kernel (must be odd)
             morph_kernel_size: Size of morphological kernel (0 to disable)
             band_order: A list of integers used to rearrange the input image channels. Indexed from 1 (like GDAL).
-            quiet: If True, suppress all progress bars and log messages.
+            quiet: If True, suppress progress bars during processing; log messages are not affected.
 
         """
-        processor = ImageProcessor.from_model(
-            model=self,
-            batch_size=batch_size,
-            crop_size=crop_size,
-            blur_kernel_size=blur_kernel_size,
-            morph_kernel_size=morph_kernel_size,
-            band_order=band_order,
-            quiet=quiet,
-        )
-        processor.run(img_path=img_path, output_path=output_path)
+        self.cfg._quiet = quiet
+        try:
+            processor = ImageProcessor.from_model(
+                model=self,
+                batch_size=batch_size,
+                crop_size=crop_size,
+                blur_kernel_size=blur_kernel_size,
+                morph_kernel_size=morph_kernel_size,
+                band_order=band_order,
+                quiet=quiet,
+            )
+            processor.run(img_path=img_path, output_path=output_path)
+        finally:
+            self.cfg._quiet = False
 
 
 class LegacyKelpRGBModel(ONNXModel):
