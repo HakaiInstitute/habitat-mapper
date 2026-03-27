@@ -12,6 +12,7 @@ import numpy as np
 import rasterio
 from loguru import logger
 from rasterio.windows import Window
+from rich.console import Console
 from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from habitat_mapper.config import ProcessingConfig
@@ -32,6 +33,7 @@ class ImageProcessor:
 
     model: ONNXModel
     config: ProcessingConfig
+    quiet: bool = False
 
     @classmethod
     def from_model(
@@ -43,6 +45,7 @@ class ImageProcessor:
         blur_kernel_size: int = 5,
         morph_kernel_size: int = 0,
         band_order: list[int] | None = None,
+        quiet: bool = False,
     ) -> ImageProcessor:
         """Create an ImageProcessor from a model with processing parameters.
 
@@ -53,6 +56,7 @@ class ImageProcessor:
             blur_kernel_size: Size of median blur kernel (must be odd)
             morph_kernel_size: Size of morphological kernel (0 to disable)
             band_order: List of band indices (1-based like GDAL)
+            quiet: If True, suppress all progress bars.
 
         Returns:
             Configured ImageProcessor instance
@@ -85,7 +89,7 @@ class ImageProcessor:
             morph_kernel_size=morph_kernel_size,
             band_order=band_order,
         )
-        return cls(model=model, config=config)
+        return cls(model=model, config=config, quiet=quiet)
 
     def run(
         self,
@@ -163,7 +167,7 @@ class ImageProcessor:
                     TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
                     TimeElapsedColumn(),
                     TimeRemainingColumn(),
-                    console=None,
+                    console=Console(quiet=self.quiet),
                 ) as progress:
                     task = progress.add_task("Processing", total=len(window_batches))
                     for window_batch in window_batches:
@@ -353,7 +357,7 @@ class ImageProcessor:
                     BarColumn(),
                     TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
                     TimeElapsedColumn(),
-                    console=None,
+                    console=Console(quiet=self.quiet),
                 ) as progress:
                     task = progress.add_task("Post-processing", total=len(windows_list))
                     for window in windows_list:

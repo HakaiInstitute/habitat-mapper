@@ -232,6 +232,7 @@ class ONNXModel:
         blur_kernel_size: int = 5,
         morph_kernel_size: int = 0,
         band_order: list[int] | None = None,
+        quiet: bool = False,
     ) -> None:
         """Process an image using the default tiled processing strategy.
 
@@ -246,18 +247,25 @@ class ONNXModel:
             blur_kernel_size: Size of median blur kernel (must be odd)
             morph_kernel_size: Size of morphological kernel (0 to disable)
             band_order: A list of integers used to rearrange the input image channels. Indexed from 1 (like GDAL).
+            quiet: If True, suppress all progress bars and log messages.
 
         """
-        processor = ImageProcessor.from_model(
-            model=self,
-            batch_size=batch_size,
-            crop_size=crop_size,
-            blur_kernel_size=blur_kernel_size,
-            morph_kernel_size=morph_kernel_size,
-            band_order=band_order,
-        )
-
-        processor.run(img_path=img_path, output_path=output_path)
+        if quiet:
+            logger.disable("habitat_mapper")
+        try:
+            processor = ImageProcessor.from_model(
+                model=self,
+                batch_size=batch_size,
+                crop_size=crop_size,
+                blur_kernel_size=blur_kernel_size,
+                morph_kernel_size=morph_kernel_size,
+                band_order=band_order,
+                quiet=quiet,
+            )
+            processor.run(img_path=img_path, output_path=output_path)
+        finally:
+            if quiet:
+                logger.enable("habitat_mapper")
 
 
 class LegacyKelpRGBModel(ONNXModel):

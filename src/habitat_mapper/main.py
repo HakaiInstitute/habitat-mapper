@@ -385,8 +385,20 @@ def segment(
             negative="",
         ),
     ] = None,
+    quiet: Annotated[
+        bool,
+        Parameter(
+            name=["--quiet", "-q"],
+            negative="--no-quiet",
+            help="Suppress all progress output and log messages.",
+        ),
+    ] = False,
 ) -> None:
     """Apply a segmentation model to an input raster and save the output."""
+    if quiet:
+        logger.remove()
+        logger.add(console.print, level="ERROR", format=_log_formatter, colorize=None)
+
     # Handle revision retrieval
     try:
         if revision == "latest":
@@ -397,18 +409,22 @@ def segment(
             actual_revision = revision
     except KeyError:
         logger.error(f"Revision {revision} was not found for model {model_name}")
+        if quiet:
+            logger.remove()
+            logger.add(console.print, level="TRACE", format=_log_formatter, colorize=None)
         return
 
-    # Show processing info in a panel
-    info_panel = Panel(
-        f"[blue]Model:[/blue] {model_name}\n"
-        f"[blue]Revision:[/blue] {actual_revision}\n"
-        f"[blue]Input:[/blue] {img_path}\n"
-        f"[blue]Output:[/blue] {Path(output_path).expanduser()}",
-        title="[bold blue]Processing Configuration[/bold blue]",
-        border_style="blue",
-    )
-    console.print(info_panel)
+    if not quiet:
+        # Show processing info in a panel
+        info_panel = Panel(
+            f"[blue]Model:[/blue] {model_name}\n"
+            f"[blue]Revision:[/blue] {actual_revision}\n"
+            f"[blue]Input:[/blue] {img_path}\n"
+            f"[blue]Output:[/blue] {Path(output_path).expanduser()}",
+            title="[bold blue]Processing Configuration[/bold blue]",
+            border_style="blue",
+        )
+        console.print(info_panel)
 
     model.process(
         img_path=img_path,
@@ -418,15 +434,22 @@ def segment(
         blur_kernel_size=blur_kernel_size,
         morph_kernel_size=morph_kernel_size,
         band_order=band_order,
+        quiet=quiet,
     )
 
-    # Show a success message
-    success_panel = Panel(
-        f"[green]✓ Successfully processed {img_path.name}\nOutput saved to: {Path(output_path).expanduser()}[/green]",
-        title="[bold green]Processing Complete[/bold green]",
-        border_style="green",
-    )
-    console.print(success_panel)
+    if not quiet:
+        # Show a success message
+        success_panel = Panel(
+            f"[green]✓ Successfully processed {img_path.name}\n"
+            f"Output saved to: {Path(output_path).expanduser()}[/green]",
+            title="[bold green]Processing Complete[/bold green]",
+            border_style="green",
+        )
+        console.print(success_panel)
+
+    if quiet:
+        logger.remove()
+        logger.add(console.print, level="TRACE", format=_log_formatter, colorize=None)
 
 
 @app.command(show=False)
