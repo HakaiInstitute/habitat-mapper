@@ -317,11 +317,21 @@ class SAFEReader(ImageReader):
             band_files = [band_02, band_03, band_04, band_08, band_05]
             band_data: list[xr.DataArray] = [rxr.open_rasterio(b) for b in band_files]  # type: ignore[misc]
 
-            # Resample 20m band (B05) to match 10m resolution
-            band_data[-1] = band_data[-1].rio.reproject_match(band_data[0], resampling=Resampling.bilinear)
+            # Resample 20m band (B05) to match 10m resolution.
+            # Save the original reference so we can close its file handle after reprojection —
+            # accessing .rio creates a circular reference that prevents CPython from immediately
+            # freeing the DataArray and its underlying rasterio file descriptor via refcounting.
+            b05_raw = band_data[-1]
+            band_data[-1] = b05_raw.rio.reproject_match(band_data[0], resampling=Resampling.bilinear)
+            b05_raw.close()
 
             # Stack bands along the band dimension
             stacked = xr.concat(band_data, dim="band")  # type: ignore[misc]
+
+            # Close source DataArrays now that their data is loaded into stacked.
+            for bd in band_data:
+                bd.close()
+            del band_data
 
             # Apply data offset
             if self._offset > 0:
@@ -330,13 +340,17 @@ class SAFEReader(ImageReader):
 
             # Optionally append bathymetry and substrate
             if self.substrate_path is not None and self.bathymetry_path is not None:
-                substrate = rxr.open_rasterio(self.substrate_path)  # type: ignore[misc]
-                substrate = substrate.rio.reproject_match(stacked, resampling=Resampling.bilinear)
+                substrate_raw = rxr.open_rasterio(self.substrate_path)  # type: ignore[misc]
+                substrate = substrate_raw.rio.reproject_match(stacked, resampling=Resampling.bilinear)
+                substrate_raw.close()
 
-                bathymetry = rxr.open_rasterio(self.bathymetry_path)  # type: ignore[misc]
-                bathymetry = bathymetry.rio.reproject_match(stacked, resampling=Resampling.bilinear)
+                bathymetry_raw = rxr.open_rasterio(self.bathymetry_path)  # type: ignore[misc]
+                bathymetry = bathymetry_raw.rio.reproject_match(stacked, resampling=Resampling.bilinear)
+                bathymetry_raw.close()
 
                 stacked = xr.concat([stacked, substrate, bathymetry], dim="band")  # type: ignore[misc]
+                substrate.close()
+                bathymetry.close()
 
             self._stacked = stacked
         except StopIteration as e:
@@ -517,6 +531,6 @@ class SAFEReader(ImageReader):
 
     def close(self) -> None:
         """Close the reader and release resources."""
-        # xarray/rioxarray resources are garbage collected
         if self._stacked is not None:
+            self._stacked.close()
             self._stacked = None
