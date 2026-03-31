@@ -29,7 +29,7 @@ class ProgressReporter(Protocol):
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
-    ) -> None:
+    ) -> bool | None:
         """Exit the progress context."""
         ...
 
@@ -59,7 +59,7 @@ class NullProgressReporter:
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
-    ) -> None:
+    ) -> bool | None:
         """Exit the progress context."""
 
     def add_task(self, description: str, total: int | None = None) -> _NullTask:
@@ -105,9 +105,13 @@ class RichProgressReporter:
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
         exc_tb: TracebackType | None,
-    ) -> None:
-        """Exit the progress context."""
-        self._progress.__exit__(exc_type, exc_val, exc_tb)
+    ) -> bool | None:
+        """Exit the progress context.
+
+        Returns:
+            True to suppress the exception, None/False to propagate it.
+        """
+        return self._progress.__exit__(exc_type, exc_val, exc_tb)
 
     def add_task(self, description: str, total: int | None = None) -> _RichTask:
         """Register a new task and return a handle for updating it.

@@ -217,9 +217,10 @@ def download_dependencies(model_config: ModelConfig, quiet: bool = False) -> lis
                     raise RuntimeError("\n".join(errors))
 
     # Log success for already cached files
-    for url, path in urls_to_download:
-        if path.exists():
-            logger.success(f"✓ Loaded: {path.name}")
+    if not quiet:
+        for url, path in urls_to_download:
+            if path.exists():
+                logger.success(f"✓ Loaded: {path.name}")
 
     return local_paths
 

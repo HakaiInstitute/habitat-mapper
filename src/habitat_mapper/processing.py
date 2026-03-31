@@ -72,6 +72,7 @@ class ImageProcessor:
                     f"channels ({model.cfg.input_channels})",
                 )
 
+        model._quiet = quiet  # propagate so any download triggered by input_size is quiet
         if crop_size is None:
             crop_size = model.input_size or 1024
         elif model.input_size is not None and crop_size != model.input_size:
