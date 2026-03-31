@@ -44,6 +44,7 @@ Apply a segmentation model to an input raster and save the output.
 │    MORPH-KERNEL --morph-kernel --morph      Size of morphological kernel (must be odd, 0 to disable) [default: 0] │
 │    BAND-ORDER --band-order              -b  Band reordering flag for rearranging bands into RGB(+NIR) order when  │
 │      --empty-band-order                     necessary.                                                            │
+│    QUIET --quiet --no-quiet             -q  Suppress progress output and non-error log messages. [default: False] │
 ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
@@ -72,6 +73,14 @@ Apply a segmentation model to an input raster and save the output.
 
     ```bash
     hab segment -m mussel-rgb -i ./input_image.tif -o ./output_mussel_segmentation.tif
+    ```
+
+    Process multiple images in a shell loop without progress noise:
+
+    ```bash
+    for f in ./images/*.tif; do
+        hab segment -m kelp-rgb -i "$f" -o "./outputs/$(basename $f)" --quiet
+    done
     ```
 
 ???+ tip "Tip: Reduce windowed processing artifacts"

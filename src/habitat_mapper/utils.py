@@ -146,11 +146,12 @@ def _download_single_dependency(
         return (dependency_url, local_path, e)
 
 
-def download_dependencies(model_config: ModelConfig) -> list[Path]:
+def download_dependencies(model_config: ModelConfig, quiet: bool = False) -> list[Path]:
     """Download all dependencies for a model in parallel.
 
     Args:
         model_config: The model configuration containing dependency URLs
+        quiet: If True, suppress download progress bars.
 
     Returns:
         List of paths to downloaded dependency files
@@ -189,7 +190,7 @@ def download_dependencies(model_config: ModelConfig) -> list[Path]:
             BarColumn(),
             DownloadColumn(),
             TransferSpeedColumn(),
-            console=None,  # Use default console
+            disable=quiet,
         ) as progress:
             # Create a task for each download
             tasks = {}
@@ -216,9 +217,10 @@ def download_dependencies(model_config: ModelConfig) -> list[Path]:
                     raise RuntimeError("\n".join(errors))
 
     # Log success for already cached files
-    for url, path in urls_to_download:
-        if path.exists():
-            logger.success(f"✓ Loaded: {path.name}")
+    if not quiet:
+        for url, path in urls_to_download:
+            if path.exists():
+                logger.success(f"✓ Loaded: {path.name}")
 
     return local_paths
 
