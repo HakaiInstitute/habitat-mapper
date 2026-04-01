@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import cv2
@@ -12,14 +12,14 @@ import numpy as np
 import rasterio
 from loguru import logger
 from rasterio.windows import Window
-from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 from habitat_mapper.config import ProcessingConfig
 from habitat_mapper.hann import BartlettHannKernel, NumpyMemoryRegister
+from habitat_mapper.progress import NullProgressReporter, ProgressReporter, RichProgressReporter
 from habitat_mapper.utils import batched
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable
+    from collections.abc import Callable, Generator, Iterable
     from pathlib import Path
 
     from habitat_mapper.model import ONNXModel
@@ -32,6 +32,7 @@ class ImageProcessor:
 
     model: ONNXModel
     config: ProcessingConfig
+    reporter_cls: Callable[[], ProgressReporter] = field(default=RichProgressReporter)
 
     @classmethod
     def from_model(
@@ -43,6 +44,7 @@ class ImageProcessor:
         blur_kernel_size: int = 5,
         morph_kernel_size: int = 0,
         band_order: list[int] | None = None,
+        quiet: bool = False,
     ) -> ImageProcessor:
         """Create an ImageProcessor from a model with processing parameters.
 
@@ -53,6 +55,7 @@ class ImageProcessor:
             blur_kernel_size: Size of median blur kernel (must be odd)
             morph_kernel_size: Size of morphological kernel (0 to disable)
             band_order: List of band indices (1-based like GDAL)
+            quiet: If True, use NullProgressReporter to suppress all progress output.
 
         Returns:
             Configured ImageProcessor instance
@@ -69,6 +72,7 @@ class ImageProcessor:
                     f"channels ({model.cfg.input_channels})",
                 )
 
+        model._quiet = quiet  # propagate so any download triggered by input_size is quiet
         if crop_size is None:
             crop_size = model.input_size or 1024
         elif model.input_size is not None and crop_size != model.input_size:
@@ -85,7 +89,8 @@ class ImageProcessor:
             morph_kernel_size=morph_kernel_size,
             band_order=band_order,
         )
-        return cls(model=model, config=config)
+        reporter_cls = NullProgressReporter if quiet else RichProgressReporter
+        return cls(model=model, config=config, reporter_cls=reporter_cls)
 
     def run(
         self,
@@ -157,15 +162,8 @@ class ImageProcessor:
             window_batches = list(batched(windows, n=self.config.batch_size))
 
             with rasterio.open(output_path, "w", **profile) as dst:
-                with Progress(
-                    TextColumn("[bold blue]Segmenting"),
-                    BarColumn(),
-                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                    TimeElapsedColumn(),
-                    TimeRemainingColumn(),
-                    console=None,
-                ) as progress:
-                    task = progress.add_task("Processing", total=len(window_batches))
+                with self.reporter_cls() as reporter:
+                    task = reporter.add_task("Segmenting", total=len(window_batches))
                     for window_batch in window_batches:
                         # Read tile data from source raster
                         input_batch = self._load_batch(reader, window_batch)
@@ -191,7 +189,7 @@ class ImageProcessor:
 
                         # If all windows were removed, skip processing and update progress
                         if len(window_batch) == 0:
-                            progress.update(task, advance=1, refresh=True)
+                            task.update(advance=1)
                             continue
 
                         # Process batch through model
@@ -235,7 +233,7 @@ class ImageProcessor:
                             data = self.model._postprocess(data)
                             dst.write(data, 1, window=write_window)
 
-                        progress.update(task, advance=1, refresh=True)
+                        task.update(advance=1)
 
             # Apply final post-processing
             self._apply_final_postprocessing(output_path)
@@ -348,14 +346,8 @@ class ImageProcessor:
 
             windows_list = list(windows)
             if windows_list:  # Only show progress if there are windows to process
-                with Progress(
-                    TextColumn("[bold green]Post-processing"),
-                    BarColumn(),
-                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-                    TimeElapsedColumn(),
-                    console=None,
-                ) as progress:
-                    task = progress.add_task("Post-processing", total=len(windows_list))
+                with self.reporter_cls() as reporter:
+                    task = reporter.add_task("Post-processing", total=len(windows_list))
                     for window in windows_list:
                         # Read tile with overlap
                         tile_data = dst.read(1, window=window)
@@ -387,7 +379,7 @@ class ImageProcessor:
 
                         # Place result, removing overlap except at boundaries
                         self._place_window_result(dst, window, tile_data, overlap)
-                        progress.update(task, advance=1, refresh=True)
+                        task.update(advance=1)
 
     @staticmethod
     def _clip_window_to_image_bounds(

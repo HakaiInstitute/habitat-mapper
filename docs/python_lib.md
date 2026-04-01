@@ -70,6 +70,27 @@ model.process(
 )
 ```
 
+### Quiet Mode
+
+Pass `quiet=True` to suppress all Rich progress bars (segmenting, post-processing, and downloads). This is useful when processing many files in a loop where the per-file output would be noisy:
+
+```python
+from pathlib import Path
+from habitat_mapper import model_registry
+
+model = model_registry['kelp-rgb']
+inputs = Path("./images").glob("*.tif")
+
+for img_path in inputs:
+    model.process(
+        img_path=img_path,
+        output_path=Path("./outputs") / img_path.name,
+        quiet=True,
+    )
+```
+
+Errors in quiet mode still cause processing to fail (either by raising an exception or exiting with a non-zero status), so failures are never silently ignored.
+
 ### Advanced Configuration
 
 For more control over the processing, you can access the underlying configuration:
