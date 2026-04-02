@@ -1,0 +1,14 @@
+{
+  "name": "kelp-skema",
+  "revision": "20260222",
+  "description": "Kelp segmentation model for Sentinel 2 L2A data.",
+  "dependencies": [
+    "~/onnx_models/Unet_tu-maxvit_tiny_tf_512_20260222.onnx"
+  ],
+  "model_filename": "Unet_tu-maxvit_tiny_tf_512_20260222.onnx",
+  "normalization": null,
+  "input_channels": 5,
+  "max_pixel_value": 1.0,
+  "activation": "sigmoid",
+  "reader_cls": "habitat_mapper.reader.SAFEReader"
+}

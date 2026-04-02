@@ -100,7 +100,7 @@ def _existing_model_validator(type_: type, value: str) -> None:
 
 
 def _existing_image_validator(type_: type, value: Path | str) -> None:
-    """Validate that input path exists and is a file.
+    """Validate that input path exists and is either a file or SAFE directory.
 
     Args:
         type_: The type being validated (unused, required by cyclopts)
@@ -113,8 +113,12 @@ def _existing_image_validator(type_: type, value: Path | str) -> None:
     if not path.exists():
         raise TypeError(f"Input path does not exist: {path}")
 
-    if not path.is_file():
-        raise TypeError(f"Input must be a file, got: {path}")
+    # Accept SAFE directories or any file
+    if path.is_dir():
+        if not path.name.endswith(".SAFE"):
+            raise TypeError(f"Directory must be a Sentinel-2 SAFE format (name ends with .SAFE), got: {path.name}")
+    elif not path.is_file():
+        raise TypeError(f"Input must be a file or SAFE directory, got: {path}")
 
 
 @app.command
@@ -327,7 +331,7 @@ def segment(
     img_path: Annotated[
         Path,
         Parameter(
-            help="Path to input raster file (GeoTIFF)",
+            help="Path to input raster file (GeoTIFF, etc.) or Sentinel-2 SAFE directory",
             validator=_existing_image_validator,
             name=["--input", "-i"],
         ),

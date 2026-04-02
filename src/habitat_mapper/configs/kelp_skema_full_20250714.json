@@ -1,0 +1,19 @@
+{
+  "name": "kelp-skema-full",
+  "revision": "20250714",
+  "description": "Kelp segmentation model for Sentinel 2 L2A data using additional bathymetry and substrate data.\nNot applicable to areas outside of coastal British Columbia, Canada.",
+  "dependencies": [
+    "~/onnx_models/Unet_tu-maxvit_tiny_tf_512_20250714_222203.onnx",
+    "~/onnx_models/bathymetry_10m_cog.tif",
+    "~/onnx_models/substrate_20m_cog.tif"
+  ],
+  "model_filename": "Unet_tu-maxvit_tiny_tf_512_20250714_222203.onnx",
+  "normalization": null,
+  "input_channels": 7,
+  "max_pixel_value": 1.0,
+  "activation": "sigmoid",
+  "reader_cls": "habitat_mapper.reader.SAFEReader",
+  "reader_kwargs": {
+    "append_bathymetry_substrate": true
+  }
+}
