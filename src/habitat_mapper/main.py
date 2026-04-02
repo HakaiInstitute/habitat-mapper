@@ -238,7 +238,7 @@ def clean() -> None:
     """Clear the Habitat-Mapper model cache to free up space. Models will be re-downloaded as needed."""
     model_dir = get_local_model_dir()
 
-    # Also find old kelp-o-matic files
+    # Also find old habitat-mapper files
     kom_model_dir = Path(platformdirs.user_cache_dir(appname="kelp_o_matic", appauthor="hakai")) / "models"
 
     # 1. Gather files using the idiomatic list comprehension
