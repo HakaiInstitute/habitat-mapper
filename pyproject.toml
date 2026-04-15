@@ -91,7 +91,7 @@ select = [
     "N999",  # Invalid module name
     "D",     # Docstrings
 ]
-"**/*.ipynb" = [
+"notebooks/*" = [
     "T201",  # print statements
     "ANN",   # annotations
     "D",     # docstrings
