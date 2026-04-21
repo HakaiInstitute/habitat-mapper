@@ -233,6 +233,7 @@ class SAFEReader(ImageReader):
         safe_dir_path: str | Path,
         append_bathymetry_substrate: bool = False,
         bathymetry_path: str | Path | None = None,
+        slope_path: str | Path | None = None,
         substrate_path: str | Path | None = None,
         **kwargs: object,
     ) -> None:
@@ -242,6 +243,7 @@ class SAFEReader(ImageReader):
             safe_dir_path: Path to the .SAFE directory containing Sentinel-2 L2A data.
             append_bathymetry_substrate: Whether to include bathymetry and substrate bands.
             bathymetry_path: Path to bathymetry GeoTIFF file. Required if append_bathymetry_substrate=True.
+            slope_path: Path to slope GeoTIFF file. Required if append_bathymetry_substrate=True.
             substrate_path: Path to substrate GeoTIFF file. Required if append_bathymetry_substrate=True.
             **kwargs: Additional keyword arguments (ignored for compatibility).
 
@@ -252,6 +254,7 @@ class SAFEReader(ImageReader):
         self.safe_dir_path = Path(safe_dir_path)
         self.append_bathymetry_substrate = append_bathymetry_substrate
         self.bathymetry_path = Path(bathymetry_path) if bathymetry_path else None
+        self.slope_path = Path(slope_path) if slope_path else None
         self.substrate_path = Path(substrate_path) if substrate_path else None
 
         if not (self.safe_dir_path / "GRANULE").exists():
@@ -259,12 +262,14 @@ class SAFEReader(ImageReader):
 
         # Validate aux file paths if needed
         if self.append_bathymetry_substrate:
-            if self.bathymetry_path is None or self.substrate_path is None:
+            if self.bathymetry_path is None or self.slope_path is None or self.substrate_path is None:
                 raise ValueError(
-                    "bathymetry_path and substrate_path are required when append_bathymetry_substrate=True"
+                    "bathymetry_path, slope_path, and substrate_path are required when append_bathymetry_substrate=True"
                 )
             if not self.bathymetry_path.exists():
                 raise FileNotFoundError(f"Bathymetry file not found: {self.bathymetry_path}")
+            if not self.slope_path.exists():
+                raise FileNotFoundError(f"Slope file not found: {self.slope_path}")
             if not self.substrate_path.exists():
                 raise FileNotFoundError(f"Substrate file not found: {self.substrate_path}")
 
@@ -338,8 +343,8 @@ class SAFEReader(ImageReader):
                 stacked = stacked.astype(np.int32) - self._offset
                 stacked = stacked.clip(0).astype(np.uint16)
 
-            # Optionally append bathymetry and substrate
-            if self.substrate_path is not None and self.bathymetry_path is not None:
+            # Optionally append bathymetry, slope, and substrate
+            if self.substrate_path is not None and self.bathymetry_path is not None and self.slope_path is not None:
                 substrate_raw = rxr.open_rasterio(self.substrate_path)  # type: ignore[misc]
                 substrate = substrate_raw.rio.reproject_match(stacked, resampling=Resampling.bilinear)
                 substrate_raw.close()
@@ -348,7 +353,11 @@ class SAFEReader(ImageReader):
                 bathymetry = bathymetry_raw.rio.reproject_match(stacked, resampling=Resampling.bilinear)
                 bathymetry_raw.close()
 
-                stacked = xr.concat([stacked, substrate, bathymetry], dim="band")  # type: ignore[misc]
+                slope_raw = rxr.open_rasterio(self.slope_path)  # type: ignore[misc]
+                slope = slope_raw.rio.reproject_match(stacked, resampling=Resampling.bilinear)
+                slope_raw.close()
+
+                stacked = xr.concat([stacked, substrate, bathymetry, slope], dim="band")  # type: ignore[misc]
                 substrate.close()
                 bathymetry.close()
 

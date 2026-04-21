@@ -32,12 +32,15 @@ conversion = [
     "segmentation-models-pytorch>=0.5.0",
 ]
 dev = [
+    "ipykernel>=7.1.0",
+    "dask[array]>=2026.3.0",
     "mypy>=1.17.1",
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
     "pyupgrade>=3.20.0",
     "ruff>=0.12.5",
     "types-requests>=2.32.4.20250809",
+    "xarray-spatial>=0.5.3",
 ]
 docs = [
     "click==8.2.1",
@@ -113,6 +116,7 @@ strict = true
 # Third-party libraries without stubs
 [[tool.mypy.overrides]]
 module = [
+    "dask.*",
     "onnxruntime.*",
     "rasterio.*"
 ]
