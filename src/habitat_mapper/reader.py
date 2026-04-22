@@ -536,8 +536,8 @@ class SkemaFullSAFEReader(SAFEReader):
         substrate_file = "bops_substrate_10m_cog.tif" if is_bops else "substrate_20m_cog.tif"
 
         self._substrate_path = self.aux_dir_path / substrate_file
-        self._bathymetry_path = self.aux_dir_path / "bathymetry_10m_new_cog.tif"
-        self._slope_path = self.aux_dir_path / "slope_10m_new_cog.tif"
+        self._bathymetry_path = self.aux_dir_path / "bathymetry_10m_cog.tif"
+        self._slope_path = self.aux_dir_path / "slope_10m_cog.tif"
 
         for p in (self._substrate_path, self._bathymetry_path, self._slope_path):
             if not p.exists():
