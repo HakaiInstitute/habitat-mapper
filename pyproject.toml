@@ -90,15 +90,15 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
-    "S101",  # Ignore use of assert in tests
-    "N999",  # Invalid module name
-    "D",     # Docstrings
+    "S101",
+    "N999",
+    "D",
 ]
-"notebooks/*" = [
-    "T201",  # print statements
-    "ANN",   # annotations
-    "D",     # docstrings
-    "S101",  # assert statements
+"examples/*" = [
+    "T201",
+    "ANN",
+    "D",
+    "S101",
 ]
 
 [tool.ruff.lint.pydocstyle]
