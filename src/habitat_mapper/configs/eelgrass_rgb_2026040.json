@@ -1,0 +1,21 @@
+{
+  "name": "eelgrass-rgb",
+  "revision": "20260402",
+  "description": "Eelgrass segmentation model for RGB drone imagery.",
+  "dependencies": [
+    "https://huggingface.co/HakaiInstitute/eelgrass-rgb/resolve/20260402/segformer_b2_seb20260402_eelgrass_rgb.onnx",
+    "https://huggingface.co/HakaiInstitute/eelgrass-rgb/resolve/20260402/segformer_b2_seb20260402_eelgrass_rgb.onnx.data"
+  ],
+  "model_filename": "segformer_b2_seb20260402_eelgrass_rgb.onnx",
+  "normalization": "standard",
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ]
+}
