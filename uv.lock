@@ -858,6 +858,8 @@ dependencies = [
     { name = "rioxarray", version = "0.20.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "xarray", version = "2025.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "xarray", version = "2025.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "xarray-spatial", version = "0.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "xarray-spatial", version = "0.9.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 
 [package.dev-dependencies]
@@ -875,8 +877,6 @@ dev = [
     { name = "pyupgrade" },
     { name = "ruff" },
     { name = "types-requests" },
-    { name = "xarray-spatial", version = "0.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "xarray-spatial", version = "0.9.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 docs = [
     { name = "click" },
@@ -911,6 +911,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.0.0" },
     { name = "rioxarray", specifier = ">=0.19.0" },
     { name = "xarray", specifier = ">=2025.6.1" },
+    { name = "xarray-spatial", specifier = ">=0.5.3" },
 ]
 
 [package.metadata.requires-dev]
@@ -928,7 +929,6 @@ dev = [
     { name = "pyupgrade", specifier = ">=3.20.0" },
     { name = "ruff", specifier = ">=0.12.5" },
     { name = "types-requests", specifier = ">=2.32.4.20250809" },
-    { name = "xarray-spatial", specifier = ">=0.5.3" },
 ]
 docs = [
     { name = "click", specifier = "==8.2.1" },

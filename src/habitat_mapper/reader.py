@@ -231,47 +231,21 @@ class SAFEReader(ImageReader):
     def __init__(
         self,
         safe_dir_path: str | Path,
-        append_bathymetry_substrate: bool = False,
-        bathymetry_path: str | Path | None = None,
-        slope_path: str | Path | None = None,
-        substrate_path: str | Path | None = None,
         **kwargs: object,
     ) -> None:
         """Initialize SAFEReader.
 
         Args:
             safe_dir_path: Path to the .SAFE directory containing Sentinel-2 L2A data.
-            append_bathymetry_substrate: Whether to include bathymetry and substrate bands.
-            bathymetry_path: Path to bathymetry GeoTIFF file. Required if append_bathymetry_substrate=True.
-            slope_path: Path to slope GeoTIFF file. Required if append_bathymetry_substrate=True.
-            substrate_path: Path to substrate GeoTIFF file. Required if append_bathymetry_substrate=True.
             **kwargs: Additional keyword arguments (ignored for compatibility).
 
         Raises:
-            ValueError: If SAFE directory structure is invalid or required aux files not provided.
-            FileNotFoundError: If bathymetry or substrate files don't exist.
+            ValueError: If SAFE directory structure is invalid.
         """
         self.safe_dir_path = Path(safe_dir_path)
-        self.append_bathymetry_substrate = append_bathymetry_substrate
-        self.bathymetry_path = Path(bathymetry_path) if bathymetry_path else None
-        self.slope_path = Path(slope_path) if slope_path else None
-        self.substrate_path = Path(substrate_path) if substrate_path else None
 
         if not (self.safe_dir_path / "GRANULE").exists():
             raise ValueError(f"GRANULE directory does not exist in {self.safe_dir_path}. Please check your path.")
-
-        # Validate aux file paths if needed
-        if self.append_bathymetry_substrate:
-            if self.bathymetry_path is None or self.slope_path is None or self.substrate_path is None:
-                raise ValueError(
-                    "bathymetry_path, slope_path, and substrate_path are required when append_bathymetry_substrate=True"
-                )
-            if not self.bathymetry_path.exists():
-                raise FileNotFoundError(f"Bathymetry file not found: {self.bathymetry_path}")
-            if not self.slope_path.exists():
-                raise FileNotFoundError(f"Slope file not found: {self.slope_path}")
-            if not self.substrate_path.exists():
-                raise FileNotFoundError(f"Substrate file not found: {self.substrate_path}")
 
         # Determine data offset from metadata
         self._offset = self._get_data_offset()
@@ -327,7 +301,7 @@ class SAFEReader(ImageReader):
             # accessing .rio creates a circular reference that prevents CPython from immediately
             # freeing the DataArray and its underlying rasterio file descriptor via refcounting.
             b05_raw = band_data[-1]
-            band_data[-1] = b05_raw.rio.reproject_match(band_data[0], resampling=Resampling.bilinear)
+            band_data[-1] = b05_raw.rio.reproject_match(band_data[0], resampling=Resampling.nearest)
             b05_raw.close()
 
             # Stack bands along the band dimension
@@ -342,24 +316,6 @@ class SAFEReader(ImageReader):
             if self._offset > 0:
                 stacked = stacked.astype(np.int32) - self._offset
                 stacked = stacked.clip(0).astype(np.uint16)
-
-            # Optionally append bathymetry, slope, and substrate
-            if self.substrate_path is not None and self.bathymetry_path is not None and self.slope_path is not None:
-                substrate_raw = rxr.open_rasterio(self.substrate_path)  # type: ignore[misc]
-                substrate = substrate_raw.rio.reproject_match(stacked, resampling=Resampling.bilinear)
-                substrate_raw.close()
-
-                bathymetry_raw = rxr.open_rasterio(self.bathymetry_path)  # type: ignore[misc]
-                bathymetry = bathymetry_raw.rio.reproject_match(stacked, resampling=Resampling.bilinear)
-                bathymetry_raw.close()
-
-                slope_raw = rxr.open_rasterio(self.slope_path)  # type: ignore[misc]
-                slope = slope_raw.rio.reproject_match(stacked, resampling=Resampling.bilinear)
-                slope_raw.close()
-
-                stacked = xr.concat([stacked, substrate, bathymetry, slope], dim="band")  # type: ignore[misc]
-                substrate.close()
-                bathymetry.close()
 
             self._stacked = stacked
         except StopIteration as e:
@@ -543,3 +499,59 @@ class SAFEReader(ImageReader):
         if self._stacked is not None:
             self._stacked.close()
             self._stacked = None
+
+
+class SkemaFullSAFEReader(SAFEReader):
+    """SAFEReader that appends substrate, bathymetry, and slope from an auxiliary directory.
+
+    Dynamically selects the substrate file based on scene type:
+    - BoPs scenes (UXQ, UXS, UDU in the SAFE directory name): substrate_10m_new_cog.tif
+    - Regular scenes: substrate_20m_new_cog.tif
+
+    Bathymetry and slope are always taken from bathymetry_10m_new_cog.tif and
+    slope_10m_new_cog.tif respectively.
+    """
+
+    BOPS_IDENTIFIERS: frozenset[str] = frozenset(["UXQ", "UXS", "UDU"])
+
+    def __init__(
+        self,
+        safe_dir_path: str | Path,
+        aux_dir_path: str | Path,
+        **kwargs: object,
+    ) -> None:
+        """Initialize SkemaFullSAFEReader.
+
+        Args:
+            safe_dir_path: Path to the .SAFE directory containing Sentinel-2 L2A data.
+            aux_dir_path: Directory containing auxiliary rasters (substrate, bathymetry, slope).
+            **kwargs: Additional keyword arguments passed to SAFEReader.
+
+        Raises:
+            FileNotFoundError: If any required auxiliary file is missing.
+        """
+        self.aux_dir_path = Path(aux_dir_path).expanduser()
+
+        is_bops = any(ident in Path(safe_dir_path).name for ident in self.BOPS_IDENTIFIERS)
+        substrate_file = "bops_substrate_10m_cog.tif" if is_bops else "substrate_20m_cog.tif"
+
+        self._substrate_path = self.aux_dir_path / substrate_file
+        self._bathymetry_path = self.aux_dir_path / "bathymetry_10m_new_cog.tif"
+        self._slope_path = self.aux_dir_path / "slope_10m_new_cog.tif"
+
+        for p in (self._substrate_path, self._bathymetry_path, self._slope_path):
+            if not p.exists():
+                raise FileNotFoundError(f"Auxiliary file not found: {p}")
+
+        super().__init__(safe_dir_path, **kwargs)
+
+    def _load_band_data(self) -> None:
+        """Load S2 bands then append substrate, bathymetry, and slope."""
+        super()._load_band_data()
+
+        for path in (self._substrate_path, self._bathymetry_path, self._slope_path):
+            raw = rxr.open_rasterio(path)  # type: ignore[misc]
+            reprojected = raw.rio.reproject_match(self._stacked, resampling=Resampling.bilinear)
+            raw.close()
+            self._stacked = xr.concat([self._stacked, reprojected], dim="band")  # type: ignore[misc]
+            reprojected.close()
