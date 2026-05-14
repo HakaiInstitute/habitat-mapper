@@ -135,6 +135,7 @@ def models() -> None:
             latest_revision = model_registry.get_latest_revision(model_name)
             model = model_registry[model_name]  # Gets latest revision
             cfg = model.cfg
+            is_beta = cfg.beta
 
             # Check if model is cached locally
             # Check if any dependency is a URL
@@ -149,7 +150,7 @@ def models() -> None:
                 status = "[green]Local[/green]"
 
             table.add_row(
-                model_name,
+                f"{model_name}{' [i][red](beta)[/red][/i]' if is_beta else ''}",
                 latest_revision,
                 cfg.description or "No description",
                 status,

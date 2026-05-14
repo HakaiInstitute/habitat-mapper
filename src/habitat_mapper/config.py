@@ -29,6 +29,7 @@ class ModelConfig(BaseModel):
     name: Annotated[str, "The name of the model for the model registry"]
     description: Annotated[str | None, "Brief description of the model for the model registry"] = None
     revision: Annotated[str, "Model revision number. Date based versioning is preferred"]
+    beta: bool = False
     dependencies: Annotated[
         list[str],
         "List of files to download (URLs or local paths). Downloaded to model-specific cache subdirectory.",
