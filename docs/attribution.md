@@ -27,6 +27,15 @@ high-resolution aerial data was instrumental in improving model accuracy and rob
 model development experience as well as expert annotations of Planet Labs satellite imagery that were used to help
 train the **kelp-ps8b** model[^1]. We are incredibly grateful for her contributions and support of this project.
 
+## Model Contributors
+
+### Dr. Mohsen Ghanbari
+
+[Dr. Mohsen Ghanbari](https://scholar.google.com/citations?user=9wytH0kAAAAJ&hl=en) *et al.* developed the
+**kelp-skema** models as part of a post-doctoral project at [Spectral Lab](https://uvicspectral.com/).
+These models were integrated into Habitat-Mapper from the original code, available on GitHub at
+[https://github.com/m5ghanba/skema/](https://github.com/m5ghanba/skema/).
+
 ## Citation
 
 If you use Habitat-Mapper in your research, please cite the software:
