@@ -199,8 +199,12 @@ def revisions(
         # Get all revisions for this model
         models_by_revision = model_registry._models[model_name]
         latest_revision = model_registry.get_latest_revision(model_name)
+        revs = list(models_by_revision.keys())
 
-        for revision in sorted(models_by_revision.keys(), reverse=True):
+        # Primary: descending date (YYYYMMDD); secondary: no-suffix before variants
+        revs.sort(key=lambda a: (-int(a[:8]), a[8:]))
+
+        for revision in revs:
             model = models_by_revision[revision]
             cfg = model.cfg
 

@@ -28,7 +28,13 @@ class ModelConfig(BaseModel):
     )
     name: Annotated[str, "The name of the model for the model registry"]
     description: Annotated[str | None, "Brief description of the model for the model registry"] = None
-    revision: Annotated[str, "Model revision number. Date based versioning is preferred"]
+    revision: Annotated[
+        str,
+        Field(
+            pattern=r"^\d{8}(-\S+)?$",
+            description="Model revision in YYYYMMDD or YYYYMMDD-variant format",
+        ),
+    ]
     beta: bool = False
     dependencies: Annotated[
         list[str],
