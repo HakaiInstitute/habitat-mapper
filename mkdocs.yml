@@ -20,6 +20,11 @@ nav:
     - CLI Reference: cli.md
     - Python API: python_lib.md
     - Model Output Reference: model_outputs.md
+  - Tutorials:
+      - SKeMa Satellite Kelp Mapping:
+          - Downloading Sentinel-2 Data: tutorials/skema/downloading_data.md
+          - Selecting a Model Variant: tutorials/skema/model_variants.md
+          - Post-Processing: tutorials/skema/post_processing.md
   - Model Details:
     - Model Architecture: training_details.md
     - Performance Metrics: model_performance.md
