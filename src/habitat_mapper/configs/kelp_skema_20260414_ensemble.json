@@ -1,6 +1,7 @@
 {
   "name": "kelp-skema",
   "revision": "20260414-ensemble",
+  "beta": true,
   "description": "Kelp segmentation model for Sentinel 2 L2A data using additional bathymetry and substrate data.\nNot applicable to areas outside of coastal British Columbia, Canada.",
   "dependencies": [
     "https://huggingface.co/HakaiInstitute/kelp-skema/resolve/20260414/Unet_tu-maxvit_tiny_tf_512_20260414_ensemble.onnx",
