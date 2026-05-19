@@ -2,7 +2,8 @@
 
 ## Imagery Assumptions
 
-All interfaces to Habitat-Mapper make the following assumptions about input images:
+All interfaces to Habitat-Mapper make the following assumptions about input images (unless otherwise noted in a model
+decription):
 
 ### 1. Data type is unsigned 8- or 16-bit integer.
 
