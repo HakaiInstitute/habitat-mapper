@@ -12,6 +12,8 @@ jobs:
   Tests:
     name: lint
     runs-on: Ubuntu-latest
+    permissions:
+      contents: read
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: true
