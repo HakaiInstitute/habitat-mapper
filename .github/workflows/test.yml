@@ -29,16 +29,18 @@ jobs:
           - "3.11"
           - "3.10"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        with:
+          persist-credentials: false
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1
         with:
-          version: "0.8.14"
+          version: "0.11.15"
           enable-cache: true
 
       - name: "Set up Python"
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  #v6.2
         with:
           python-version: ${{ matrix.py }}
 
