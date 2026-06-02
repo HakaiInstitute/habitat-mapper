@@ -33,6 +33,7 @@ conversion = [
     "segmentation-models-pytorch>=0.5.0",
 ]
 dev = [
+    "pyrefly>=0.60.0",
     "ipykernel>=7.1.0",
     "dask[array]>=2026.3.0",
     "mypy>=1.17.1",
