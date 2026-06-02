@@ -5,7 +5,6 @@
   "description": "Kelp segmentation model for Sentinel 2 L2A data using additional bathymetry and substrate data.\nNot applicable to areas outside of coastal British Columbia, Canada.",
   "dependencies": [
     "https://huggingface.co/HakaiInstitute/kelp-skema/resolve/20260414/Unet_tu-maxvit_tiny_tf_512_20260414_full.onnx",
-    "https://huggingface.co/HakaiInstitute/kelp-skema/resolve/20260414/bops_substrate_10m_cog.tif",
     "https://huggingface.co/HakaiInstitute/kelp-skema/resolve/20260414/substrate_20m_cog.tif",
     "https://huggingface.co/HakaiInstitute/kelp-skema/resolve/20260414/bathymetry_10m_cog.tif",
     "https://huggingface.co/HakaiInstitute/kelp-skema/resolve/20260414/slope_10m_cog.tif"
@@ -17,6 +16,7 @@
   "activation": "sigmoid",
   "reader_cls": "habitat_mapper.reader.SkemaFullSAFEReader",
   "reader_kwargs": {
-    "aux_dir_path": "__model_cache__"
+    "aux_dir_path": "__model_cache__",
+    "substrate_filename": "substrate_20m_cog.tif"
   }
 }

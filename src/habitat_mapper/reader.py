@@ -504,20 +504,18 @@ class SAFEReader(ImageReader):
 class SkemaFullSAFEReader(SAFEReader):
     """SAFEReader that appends substrate, bathymetry, and slope from an auxiliary directory.
 
-    Dynamically selects the substrate file based on scene type:
-    - BoPs scenes (UXQ, UXS, UDU in the SAFE directory name): substrate_10m_new_cog.tif
-    - Regular scenes: substrate_20m_new_cog.tif
+    The substrate file to use is specified explicitly via ``substrate_filename`` so that
+    the model config controls which substrate variant is loaded (e.g. BoPs vs standard).
 
-    Bathymetry and slope are always taken from bathymetry_10m_new_cog.tif and
-    slope_10m_new_cog.tif respectively.
+    Bathymetry and slope are always taken from bathymetry_10m_cog.tif and
+    slope_10m_cog.tif respectively.
     """
-
-    BOPS_IDENTIFIERS: frozenset[str] = frozenset(["UXQ", "UXS", "UDU"])
 
     def __init__(
         self,
         safe_dir_path: str | Path,
         aux_dir_path: str | Path,
+        substrate_filename: str,
         **kwargs: object,
     ) -> None:
         """Initialize SkemaFullSAFEReader.
@@ -525,6 +523,7 @@ class SkemaFullSAFEReader(SAFEReader):
         Args:
             safe_dir_path: Path to the .SAFE directory containing Sentinel-2 L2A data.
             aux_dir_path: Directory containing auxiliary rasters (substrate, bathymetry, slope).
+            substrate_filename: Filename of the substrate raster inside ``aux_dir_path``.
             **kwargs: Additional keyword arguments passed to SAFEReader.
 
         Raises:
@@ -532,10 +531,7 @@ class SkemaFullSAFEReader(SAFEReader):
         """
         self.aux_dir_path = Path(aux_dir_path).expanduser()
 
-        is_bops = any(ident in Path(safe_dir_path).name for ident in self.BOPS_IDENTIFIERS)
-        substrate_file = "bops_substrate_10m_cog.tif" if is_bops else "substrate_20m_cog.tif"
-
-        self._substrate_path = self.aux_dir_path / substrate_file
+        self._substrate_path = self.aux_dir_path / substrate_filename
         self._bathymetry_path = self.aux_dir_path / "bathymetry_10m_cog.tif"
         self._slope_path = self.aux_dir_path / "slope_10m_cog.tif"
 
