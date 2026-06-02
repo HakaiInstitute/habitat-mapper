@@ -3,8 +3,8 @@
   "revision": "20260602",
   "description": "Kelp segmentation model for 8-band PlanetScope imagery.",
   "dependencies": [
-    "https://huggingface.co/HakaiInstitute/kelp-ps8b/resolve/refs%2Fpr%2F1/model.onnx",
-    "https://huggingface.co/HakaiInstitute/kelp-ps8b/resolve/refs%2Fpr%2F1/model.onnx.data"
+    "https://huggingface.co/HakaiInstitute/kelp-ps8b/resolve/20260602/model.onnx",
+    "https://huggingface.co/HakaiInstitute/kelp-ps8b/resolve/20260602/model.onnx.data"
   ],
   "model_filename": "model.onnx",
   "normalization": "standard",
