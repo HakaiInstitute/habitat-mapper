@@ -8,6 +8,7 @@ requires-python = ">=3.10,<3.14"
 license = "MIT"
 dependencies = [
     "cyclopts>=3.22.2",
+    "defusedxml>=0.7.1",
     "deprecation>=2.1.0",
     "humanize>=4.12.3",
     "loguru>=0.7.3",
@@ -20,6 +21,9 @@ dependencies = [
     "rasterio>=1.4.3",
     "requests>=2.32.4",
     "rich>=13.0.0",
+    "rioxarray>=0.19.0",
+    "xarray>=2025.6.1",
+    "xarray-spatial>=0.5.3",
 ]
 
 [dependency-groups]
@@ -29,6 +33,9 @@ conversion = [
     "segmentation-models-pytorch>=0.5.0",
 ]
 dev = [
+    "pyrefly>=0.60.0",
+    "ipykernel>=7.1.0",
+    "dask[array]>=2026.3.0",
     "mypy>=1.17.1",
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
@@ -84,15 +91,15 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
-    "S101",  # Ignore use of assert in tests
-    "N999",  # Invalid module name
-    "D",     # Docstrings
+    "S101",
+    "N999",
+    "D",
 ]
-"**/*.ipynb" = [
-    "T201",  # print statements
-    "ANN",   # annotations
-    "D",     # docstrings
-    "S101",  # assert statements
+"examples/*" = [
+    "T201",
+    "ANN",
+    "D",
+    "S101",
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -110,6 +117,7 @@ strict = true
 # Third-party libraries without stubs
 [[tool.mypy.overrides]]
 module = [
+    "dask.*",
     "onnxruntime.*",
     "rasterio.*"
 ]

@@ -100,7 +100,7 @@ def _existing_model_validator(type_: type, value: str) -> None:
 
 
 def _existing_image_validator(type_: type, value: Path | str) -> None:
-    """Validate that input path exists and is a file.
+    """Validate that input path exists and is either a file or SAFE directory.
 
     Args:
         type_: The type being validated (unused, required by cyclopts)
@@ -113,8 +113,12 @@ def _existing_image_validator(type_: type, value: Path | str) -> None:
     if not path.exists():
         raise TypeError(f"Input path does not exist: {path}")
 
-    if not path.is_file():
-        raise TypeError(f"Input must be a file, got: {path}")
+    # Accept SAFE directories or any file
+    if path.is_dir():
+        if not path.name.endswith(".SAFE"):
+            raise TypeError(f"Directory must be a Sentinel-2 SAFE format (name ends with .SAFE), got: {path.name}")
+    elif not path.is_file():
+        raise TypeError(f"Input must be a file or SAFE directory, got: {path}")
 
 
 @app.command
@@ -135,6 +139,7 @@ def models() -> None:
             latest_revision = model_registry.get_latest_revision(model_name)
             model = model_registry[model_name]  # Gets latest revision
             cfg = model.cfg
+            is_beta = cfg.beta
 
             # Check if model is cached locally
             # Check if any dependency is a URL
@@ -149,7 +154,7 @@ def models() -> None:
                 status = "[green]Local[/green]"
 
             table.add_row(
-                model_name,
+                f"{model_name}{' [i][red](beta)[/red][/i]' if is_beta else ''}",
                 latest_revision,
                 cfg.description or "No description",
                 status,
@@ -194,8 +199,12 @@ def revisions(
         # Get all revisions for this model
         models_by_revision = model_registry._models[model_name]
         latest_revision = model_registry.get_latest_revision(model_name)
+        revs = list(models_by_revision.keys())
 
-        for revision in sorted(models_by_revision.keys(), reverse=True):
+        # Primary: descending date (YYYYMMDD); secondary: no-suffix before variants
+        revs.sort(key=lambda a: (-int(a[:8]), a[8:]))
+
+        for revision in revs:
             model = models_by_revision[revision]
             cfg = model.cfg
 
@@ -327,7 +336,7 @@ def segment(
     img_path: Annotated[
         Path,
         Parameter(
-            help="Path to input raster file (GeoTIFF)",
+            help="Path to input raster file (GeoTIFF, etc.) or Sentinel-2 SAFE directory",
             validator=_existing_image_validator,
             name=["--input", "-i"],
         ),

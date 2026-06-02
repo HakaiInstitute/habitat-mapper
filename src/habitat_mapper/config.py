@@ -14,7 +14,7 @@ from pydantic import (
     model_validator,
 )
 
-from habitat_mapper.utils import _all_positive, _is_odd_or_zero, download_dependencies
+from habitat_mapper.utils import _all_positive, _is_odd_or_zero, download_dependencies, get_local_model_dir
 
 if TYPE_CHECKING:
     from habitat_mapper.reader import ImageReader
@@ -28,7 +28,14 @@ class ModelConfig(BaseModel):
     )
     name: Annotated[str, "The name of the model for the model registry"]
     description: Annotated[str | None, "Brief description of the model for the model registry"] = None
-    revision: Annotated[str, "Model revision number. Date based versioning is preferred"]
+    revision: Annotated[
+        str,
+        Field(
+            pattern=r"^\d{8}(-\S+)?$",
+            description="Model revision in YYYYMMDD or YYYYMMDD-variant format",
+        ),
+    ]
+    beta: bool = False
     dependencies: Annotated[
         list[str],
         "List of files to download (URLs or local paths). Downloaded to model-specific cache subdirectory.",
@@ -156,8 +163,14 @@ class ModelConfig(BaseModel):
         Raises:
             TypeError: If input_path is not compatible with the reader
         """
+        # Handle special __model_cache__ string
+        model_cache_dir = get_local_model_dir(self.name, self.revision)
+        kwargs = {
+            k: (v.replace("__model_cache__", str(model_cache_dir)) if isinstance(v, str) else v)
+            for k, v in self.reader_kwargs.items()
+        }
         try:
-            return self.reader_cls(input_path, **self.reader_kwargs)
+            return self.reader_cls(input_path, **kwargs)
         except TypeError as e:
             # Re-raise with additional context about the reader and provided arguments
             raise TypeError(f"Cannot instantiate {self.reader_cls.__name__} with the provided arguments: {e}") from e
