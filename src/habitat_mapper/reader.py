@@ -14,6 +14,8 @@ import xarray as xr
 from defusedxml.ElementTree import parse as parse_xml
 from loguru import logger
 from rasterio.enums import Resampling
+from rasterio.transform import from_bounds as transform_from_bounds
+from rasterio.warp import reproject as warp_reproject
 
 if TYPE_CHECKING:
     from rasterio.windows import Window
@@ -509,6 +511,10 @@ class SkemaFullSAFEReader(SAFEReader):
 
     Bathymetry and slope are always taken from bathymetry_10m_cog.tif and
     slope_10m_cog.tif respectively.
+
+    Auxiliary files are read lazily: only the pixels needed for each inference tile are
+    warped at read time, avoiding a full-scene reproject of the (potentially large) BC-wide
+    COGs during startup.
     """
 
     def __init__(
@@ -539,15 +545,98 @@ class SkemaFullSAFEReader(SAFEReader):
             if not p.exists():
                 raise FileNotFoundError(f"Auxiliary file not found: {p}")
 
+        self._aux_datasets: list[rasterio.DatasetReader] = []
         super().__init__(safe_dir_path, **kwargs)
 
     def _load_band_data(self) -> None:
-        """Load S2 bands then append substrate, bathymetry, and slope."""
+        """Load S2 bands and open aux file handles (data read lazily per window)."""
         super()._load_band_data()
+        self._aux_datasets = [rasterio.open(p) for p in (self._substrate_path, self._bathymetry_path, self._slope_path)]
 
-        for path in (self._substrate_path, self._bathymetry_path, self._slope_path):
-            raw = rxr.open_rasterio(path)  # type: ignore[misc]
-            reprojected = raw.rio.reproject_match(self._stacked, resampling=Resampling.bilinear)
-            raw.close()
-            self._stacked = xr.concat([self._stacked, reprojected], dim="band")  # type: ignore[misc]
-            reprojected.close()
+    @property
+    def num_bands(self) -> int:
+        """Number of bands (S2 bands plus one per auxiliary raster)."""
+        return super().num_bands + len(self._aux_datasets)
+
+    def _read_aux_window(self, ds: rasterio.DatasetReader, window: Window, fill_value: int) -> np.ndarray:
+        """Warp a single window from an aux COG into the S2 tile's coordinate space.
+
+        Args:
+            ds: Open rasterio dataset for the auxiliary raster.
+            window: Rasterio Window specifying the region in S2 pixel space.
+            fill_value: Value used for pixels outside the aux raster extent.
+
+        Returns:
+            Float32 array of shape [1, height, width].
+
+        Raises:
+            RuntimeError: If band data has not been loaded.
+        """
+        if self._stacked is None:
+            raise RuntimeError("Band data not loaded")
+
+        s2_transform = self._stacked.rio.transform()
+        s2_crs = self._stacked.rio.crs
+
+        col_off, row_off = window.col_off, window.row_off
+        w, h = int(window.width), int(window.height)
+
+        # Geographic bounds of the requested window (may extend beyond S2 image for boundless reads)
+        west, north = s2_transform * (col_off, row_off)
+        east, south = s2_transform * (col_off + w, row_off + h)
+
+        dst_transform = transform_from_bounds(west, south, east, north, w, h)
+        dst = np.full((1, h, w), fill_value, dtype=np.float32)
+
+        warp_reproject(
+            source=rasterio.band(ds, 1),
+            destination=dst,
+            src_transform=ds.transform,
+            src_crs=ds.crs,
+            dst_transform=dst_transform,
+            dst_crs=s2_crs,
+            resampling=Resampling.bilinear,
+            dst_nodata=fill_value,
+        )
+
+        return dst
+
+    def read_window(
+        self,
+        window: Window,
+        band_order: list[int] | None = None,
+        boundless: bool = True,
+        fill_value: int = 0,
+    ) -> np.ndarray:
+        """Read a window of S2 and auxiliary band data, reprojecting aux bands lazily.
+
+        Args:
+            window: Rasterio Window object specifying the region to read.
+            band_order: List of band indices (1-based) to read. If None, reads all bands.
+            boundless: If True, pads with fill_value for out-of-bounds regions.
+            fill_value: Value used for padding and missing aux data.
+
+        Returns:
+            Float32 array of shape [bands, height, width].
+        """
+        s2_data = super().read_window(window, band_order=None, boundless=boundless, fill_value=fill_value)
+        aux_parts = [self._read_aux_window(ds, window, fill_value) for ds in self._aux_datasets]
+        data = np.concatenate([s2_data.astype(np.float32)] + aux_parts, axis=0)
+
+        if band_order is not None:
+            if any(b < 1 or b > self.num_bands for b in band_order):
+                logger.error(
+                    f"Band order {band_order} is invalid for image with {self.num_bands} bands.\n "
+                    "Please specify band indices between 1 and the number of bands in the image (GDAL indexing)."
+                )
+                sys.exit(1)
+            data = data[[b - 1 for b in band_order]]
+
+        return data
+
+    def close(self) -> None:
+        """Close auxiliary rasterio datasets and the underlying SAFEReader."""
+        for ds in self._aux_datasets:
+            ds.close()
+        self._aux_datasets = []
+        super().close()
