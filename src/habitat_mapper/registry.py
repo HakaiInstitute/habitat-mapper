@@ -91,8 +91,11 @@ class ModelRegistry:
             raise KeyError(f"Model '{name}' is not registered.")
 
         revisions = list(self._models[name].keys())
-        # Sort by revision string (calendar versioning works with string sort)
-        return max(revisions)
+
+        # Primary: descending date (YYYYMMDD); secondary: no-suffix before variants
+        revisions.sort(key=lambda a: (-int(a[:8]), a[8:]))
+
+        return revisions[0]
 
     def __getitem__(self, key: str | tuple[str, str]) -> ONNXModel:
         """Retrieve a model by its name (latest revision) or by (name, revision) tuple.

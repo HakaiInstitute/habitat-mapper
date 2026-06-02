@@ -100,7 +100,7 @@ class ImageProcessor:
         """Process a raster file with tiled segmentation.
 
         Args:
-            img_path: Path to input raster
+            img_path: Path to input raster or SAFE directory
             output_path: Path to output segmentation raster
         """
         register = None

@@ -310,5 +310,5 @@ output
 modelfiles/
 
 *.ckpt
-
+*.pth
 *.onnx
