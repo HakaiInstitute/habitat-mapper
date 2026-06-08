@@ -1,0 +1,34 @@
+{
+  "name": "kelp-ps8b",
+  "revision": "20260604",
+  "description": "Kelp segmentation model for 8-band PlanetScope imagery.",
+  "dependencies": [
+    "https://huggingface.co/HakaiInstitute/kelp-ps8b/resolve/20260604/model.onnx",
+    "https://huggingface.co/HakaiInstitute/kelp-ps8b/resolve/20260604/model.onnx.data"
+  ],
+  "model_filename": "model.onnx",
+  "normalization": "standard",
+  "input_channels": 8,
+  "mean": [
+    1720.0,
+    1715.0,
+    1913.0,
+    2088.0,
+    2274.0,
+    2290.0,
+    2613.0,
+    3970.0
+  ],
+  "std": [
+    747.0,
+    698.0,
+    739.0,
+    768.0,
+    849.0,
+    868.0,
+    849.0,
+    914.0
+  ],
+  "max_pixel_value": 1.0,
+  "activation": "sigmoid"
+}
