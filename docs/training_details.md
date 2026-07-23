@@ -19,9 +19,6 @@ with 50% overlap between adjacent tiles. To balance the dataset, tiles containin
 kelp where discarded. These sets of tiles where then divided into training, validation,
 and test splits.
 
-Source code for data preparation is available on GitHub
-at [:material-github: hakai-ml-dataprep](https://github.com/tayden/hakai-ml-dataprep).
-
 ### Pre-processing overview
 
 ```mermaid
@@ -92,7 +89,7 @@ flowchart LR
 ## Model Training
 
 Source code for model training is available on GitHub
-at [:material-github: hakai-ml-train](https://github.com/tayden/hakai-ml-train).
+at [:material-github: hakai-ml-train](https://github.com/HakaiInstitute/hakai-ml-train).
 
 ### Training overview
 
