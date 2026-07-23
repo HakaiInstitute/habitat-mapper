@@ -139,4 +139,4 @@ This project was co-created at the [Hakai Institute](https://hakai.org) by:
 ### License
 
 Habitat-Mapper is released under
-the [MIT license](https://raw.githubusercontent.com/tayden/habitat-mapper/main/LICENSE).
+the [MIT license](https://raw.githubusercontent.com/HakaiInstitute/habitat-mapper/main/LICENSE).
