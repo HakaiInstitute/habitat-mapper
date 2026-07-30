@@ -29,23 +29,25 @@ pip install --upgrade habitat-mapper
 
     This is the fastest way to look up command syntax and available flags.
 
-| Task | Command |
-|------|---------|
-| List available models | `hab models` |
-| List model revisions | `hab revisions <model-name>` |
-| Segment an image | `hab segment -m <model> -i <input.tif> -o <output.tif>` |
-| Check version | `hab --version` |
-| Clear model cache | `hab clean` |
+| Task                  | Command                                                 |
+|-----------------------|---------------------------------------------------------|
+| List available models | `hab models`                                            |
+| List model revisions  | `hab revisions <model-name>`                            |
+| Segment an image      | `hab segment -m <model> -i <input.tif> -o <output.tif>` |
+| Check version         | `hab --version`                                         |
+| Clear model cache     | `hab clean`                                             |
 
 ## Available Models
 
-| Model Name | Input Type | Output Classes |
-|------------|------------|----------------|
-| `kelp-rgb` | RGB (3-band) | Background, *Macrocystis*, *Nereocystis* |
-| `kelp-rgbi` | RGB+NIR (4-band) | Background, *Macrocystis*, *Nereocystis* |
-| `kelp-ps8b` | PlanetScope 8-band | Background, Kelp (presence only) |
-| `mussel-rgb` | RGB (3-band) | Background, Mussels |
-| `mussel-gooseneck-rgb` | RGB (3-band) | Background, Mussels, Gooseneck Barnacles |
+| Model Name             | Input Type               | Output Classes                           |
+|------------------------|--------------------------|------------------------------------------|
+| `eelgrass-rgb`         | RGB (3-band)             | Background, Eelgrass (*Zostera marina*)  |
+| `kelp-ps8b`            | PlanetScope 8-band       | Background, Kelp (presence only)         |
+| `kelp-rgb`             | RGB (3-band)             | Background, *Macrocystis*, *Nereocystis* |
+| `kelp-rgbi`            | RGB+NIR (4-band)         | Background, *Macrocystis*, *Nereocystis* |
+| `kelp-skema` (beta)    | Sentinel-2 L2A (`.SAFE`) | Background, Kelp (presence only)         |
+| `mussel-gooseneck-rgb` | RGB (3-band)             | Background, Mussels, Gooseneck Barnacles |
+| `mussel-rgb`           | RGB (3-band)             | Background, Mussels                      |
 
 See [Model Output Reference](model_outputs.md) for detailed class definitions.
 
