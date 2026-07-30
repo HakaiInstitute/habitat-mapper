@@ -77,9 +77,11 @@ hab models
 
 | Model Name           | Revision | Description                                                             |
 |----------------------|----------|-------------------------------------------------------------------------|
-| kelp-ps8b            | 20250818 | Kelp segmentation model for 8-band PlanetScope imagery.                 |
+| eelgrass-rgb         | 20260402 | Eelgrass segmentation model for RGB drone imagery.                      |
+| kelp-ps8b            | 20260604 | Kelp segmentation model for 8-band PlanetScope imagery.                 |
 | kelp-rgb             | 20240722 | Kelp segmentation model for RGB drone imagery.                          |
 | kelp-rgbi            | 20231214 | Kelp segmentation model for 4-band RGB+NIR drone imagery.               |
+| kelp-skema (beta)    | 20260414 | Kelp segmentation model for Sentinel 2 L2A data.                        |
 | mussel-gooseneck-rgb | 20250725 | Mussel and gooseneck barnacle segmentation model for RGB drone imagery. |
 | mussel-rgb           | 20250711 | Mussel segmentation model for RGB drone imagery.                        |
 
