@@ -20,6 +20,8 @@ from rasterio.warp import reproject as warp_reproject
 if TYPE_CHECKING:
     from rasterio.windows import Window
 
+_FLOAT32_MAX = float(np.finfo(np.float32).max)
+
 
 class ImageReader(ABC):
     """Abstract base class for reading image data in tiles."""
@@ -558,13 +560,36 @@ class SkemaFullSAFEReader(SAFEReader):
         """Number of bands (S2 bands plus one per auxiliary raster)."""
         return super().num_bands + len(self._aux_datasets)
 
+    @staticmethod
+    def _aux_missing_value(ds: rasterio.DatasetReader, fill_value: int) -> np.float32:
+        """Determine the value to report where an aux raster has no data for a pixel.
+
+        The aux raster's own NoData value is preferred, so uncovered pixels keep the sentinel
+        that raster uses for missing data (-2000 m for bathymetry, 85 degrees for slope)
+        instead of looking like a real measurement. Rasters that declare no NoData value, or
+        one that cannot be represented as a finite float32, fall back to ``fill_value`` --
+        the substrate rasters use 0 for unmapped areas, which is the default fill_value.
+
+        Args:
+            ds: Open rasterio dataset for the auxiliary raster.
+            fill_value: Fallback value requested by the caller.
+
+        Returns:
+            The float32 value to use for pixels with no aux data.
+        """
+        src_nodata = ds.nodata
+        if src_nodata is None or not np.isfinite(src_nodata) or abs(src_nodata) > _FLOAT32_MAX:
+            return np.float32(fill_value)
+        return np.float32(src_nodata)
+
     def _read_aux_window(self, ds: rasterio.DatasetReader, window: Window, fill_value: int) -> np.ndarray:
         """Warp a single window from an aux COG into the S2 tile's coordinate space.
 
         Args:
             ds: Open rasterio dataset for the auxiliary raster.
             window: Rasterio Window specifying the region in S2 pixel space.
-            fill_value: Value used for pixels outside the aux raster extent.
+            fill_value: Value used for pixels outside the aux raster extent when the aux
+                raster declares no NoData value of its own.
 
         Returns:
             Float32 array of shape [1, height, width].
@@ -586,8 +611,17 @@ class SkemaFullSAFEReader(SAFEReader):
         east, south = s2_transform * (col_off + w, row_off + h)
 
         dst_transform = transform_from_bounds(west, south, east, north, w, h)
-        dst = np.full((1, h, w), fill_value, dtype=np.float32)
 
+        # Pre-fill so pixels the warp never writes — outside the aux extent, or NoData in the
+        # aux raster — carry that raster's missing-data sentinel.
+        missing_value = self._aux_missing_value(ds, fill_value)
+        dst = np.full((1, h, w), missing_value, dtype=np.float32)
+
+        # dst_nodata must not collide with a real measurement: GDAL nudges any warped value
+        # equal to it by one ULP and logs a warning for every tile and band (issue #193), and 0
+        # is a genuine value in all three aux rasters. NaN can never equal a warped value, so
+        # nothing gets nudged. init_dest_nodata=False keeps the pre-fill above instead of
+        # letting GDAL initialize the destination. Source NoData is read from the dataset.
         warp_reproject(
             source=rasterio.band(ds, 1),
             destination=dst,
@@ -596,10 +630,13 @@ class SkemaFullSAFEReader(SAFEReader):
             dst_transform=dst_transform,
             dst_crs=s2_crs,
             resampling=Resampling.bilinear,
-            dst_nodata=fill_value,
+            dst_nodata=np.nan,
+            init_dest_nodata=False,
         )
 
-        return dst
+        # NaN/inf warped in from the aux raster would poison the model output for the whole
+        # tile, so collapse them onto the sentinel too.
+        return np.where(np.isfinite(dst), dst, missing_value)
 
     def read_window(
         self,
@@ -614,7 +651,8 @@ class SkemaFullSAFEReader(SAFEReader):
             window: Rasterio Window object specifying the region to read.
             band_order: List of band indices (1-based) to read. If None, reads all bands.
             boundless: If True, pads with fill_value for out-of-bounds regions.
-            fill_value: Value used for padding and missing aux data.
+            fill_value: Value used for padding the S2 bands, and for missing aux data in aux
+                rasters that declare no NoData value of their own.
 
         Returns:
             Float32 array of shape [bands, height, width].
