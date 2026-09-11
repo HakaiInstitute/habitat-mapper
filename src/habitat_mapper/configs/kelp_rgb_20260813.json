@@ -1,0 +1,21 @@
+{
+  "name": "kelp-rgb",
+  "revision": "20260813",
+  "description": "Kelp segmentation model for RGB drone imagery.",
+  "dependencies": [
+    "https://huggingface.co/HakaiInstitute/kelp-rgb/resolve/refs%2Fpr%2F1/model.onnx",
+    "https://huggingface.co/HakaiInstitute/kelp-rgb/resolve/refs%2Fpr%2F1/model.onnx.data"
+  ],
+  "model_filename": "model.onnx",
+  "normalization": "standard",
+  "mean": [
+    0.485,
+    0.456,
+    0.406
+  ],
+  "std": [
+    0.229,
+    0.224,
+    0.225
+  ]
+}
