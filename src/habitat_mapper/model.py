@@ -152,16 +152,23 @@ class ONNXModel:
         if self.cfg.max_pixel_value == "auto":
             self.cfg.max_pixel_value = np.iinfo(batch.dtype).max
 
-        batch = batch.astype(np.float32) / self.cfg.max_pixel_value
+        batch = batch.astype(np.float32)
+
+        if self.cfg.normalization == "standard":
+            # Fold pixel scaling into the normalization, (x / max - mean) / std == x * scale + offset,
+            # and apply it in place in float32 (float64 mean/std would otherwise promote the whole batch)
+            mean = np.asarray(self.cfg.mean, dtype=np.float64)
+            std = np.asarray(self.cfg.std, dtype=np.float64)
+            scale = (1.0 / (self.cfg.max_pixel_value * std)).astype(np.float32)[None, :, None, None]
+            offset = (-mean / std).astype(np.float32)[None, :, None, None]
+            batch *= scale
+            batch += offset
+            return batch
+
+        batch /= np.float32(self.cfg.max_pixel_value)
 
         if self.cfg.normalization is None:
             return batch
-
-        if self.cfg.normalization == "standard":
-            # Expand dims for broadcasting
-            mean = np.array(self.cfg.mean)[None, :, None, None]
-            std = np.array(self.cfg.std)[None, :, None, None]
-            return (batch - mean) / std
 
         if self.cfg.normalization == "min_max":
             bmin = batch.min(axis=(1, 2, 3), keepdims=True)
