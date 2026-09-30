@@ -117,7 +117,7 @@ $ hab models
 ┡━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━┩
 │ eelgrass-rgb         │ 20260402 │ Eelgrass segmentation model for RGB drone imagery.                      │ Available │
 │ kelp-ps8b            │ 20260604 │ Kelp segmentation model for 8-band PlanetScope imagery.                 │ Available │
-│ kelp-rgb             │ 20240722 │ Kelp segmentation model for RGB drone imagery.                          │ Available │
+│ kelp-rgb             │ 20260929 │ Kelp species segmentation model for RGB drone imagery.                  │ Available │
 │ kelp-rgbi            │ 20231214 │ Kelp segmentation model for 4-band RGB+NIR drone imagery.               │ Available │
 │ kelp-skema (beta)    │ 20260414 │ Kelp segmentation model for Sentinel 2 L2A data.                        │ Available │
 │ mussel-gooseneck-rgb │ 20250725 │ Mussel and gooseneck barnacle segmentation model for RGB drone imagery. │ Available │
@@ -147,12 +147,13 @@ List all available revisions for a specific model.
 
     ```bash
     $ hab revisions kelp-rgb
-                              Revisions for kelp-rgb
-    ┏━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┓
-    ┃ Revision ┃ Latest ┃ Description                                    ┃ Status    ┃
-    ┡━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━┩
-    │ 20240722 │   ✓    │ Kelp segmentation model for RGB drone imagery. │ Available │
-    └──────────┴────────┴────────────────────────────────────────────────┴───────────┘
+                                  Revisions for kelp-rgb
+    ┏━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━┓
+    ┃ Revision ┃ Latest ┃ Description                                            ┃ Status    ┃
+    ┡━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━┩
+    │ 20260929 │   ✓    │ Kelp species segmentation model for RGB drone imagery. │ Available │
+    │ 20240722 │        │ Kelp segmentation model for RGB drone imagery.         │ Available │
+    └──────────┴────────┴────────────────────────────────────────────────────────┴───────────┘
     ```
 
 ## Clean
