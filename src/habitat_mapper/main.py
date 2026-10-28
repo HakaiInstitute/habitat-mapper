@@ -24,7 +24,7 @@ from rich.traceback import install
 from habitat_mapper.registry import model_registry
 from habitat_mapper.utils import get_local_model_dir, is_url
 
-app = App()
+app = App(name="hab", help="Habitat segmentation of geospatial imagery with AI.")
 console = Console()
 
 
@@ -372,7 +372,7 @@ def segment(
     blur_kernel_size: Annotated[
         int,
         Parameter(
-            help="Size of median blur kernel (must be odd)",
+            help="Size of median blur kernel (must be odd, 0 to disable)",
             validator=_positive_odd_int_or_zero_validator,
             name=["--blur"],
         ),

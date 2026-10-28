@@ -926,7 +926,7 @@ examples = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cyclopts", specifier = ">=3.22.2" },
+    { name = "cyclopts", specifier = ">=4.23.0" },
     { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "deprecation", specifier = ">=2.1.0" },
     { name = "humanize", specifier = ">=4.12.3" },
