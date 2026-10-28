@@ -10,7 +10,7 @@ in pieces:
 
 1. **Read in tiles.** The image is read in square windows of `--crop-size` pixels that overlap by 50%. Each window
    is reordered to the band order the model expects (see `-b`) and normalised.
-2. **Predict.** Each window goes through the model, `--batch-size` windows at a time, on a GPU if one is available.
+2. **Predict.** Each window goes through the model, `--batch-size` windows at a time, on a GPU if one is available (see `--device`).
 3. **Blend.** Overlapping predictions are blended with a smooth weighting window, so tile edges don't show as seams.
    Larger tiles mean fewer seams (see [Tune Processing](../guides/tune-processing.md#crop-size-quality-vs-memory)).
 4. **Label and clean.** The blended scores become one class value per pixel. Then the optional `--blur` and

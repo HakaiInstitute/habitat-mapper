@@ -15,6 +15,7 @@ Habitat segmentation of geospatial imagery with AI.
 **Commands**:
 
 * [`clean`](#hab-clean): Clear the Habitat-Mapper model cache to free up space. Models will be re-downloaded as needed.
+* [`devices`](#hab-devices): List the hardware Habitat-Mapper can run models on, in the order `--device auto` tries them.
 * [`models`](#hab-models): List all available models with their latest revisions.
 * [`revisions`](#hab-revisions): List all available revisions for a specific model.
 * [`segment`](#hab-segment): Apply a segmentation model to an input raster and save the output.
@@ -38,6 +39,14 @@ List all available revisions for a specific model.
 **Parameters**:
 
 * `MODEL, --model, -m`: The name of the model to run. Run `hab models` to see options **[required]**
+
+## hab devices
+
+```console
+hab devices
+```
+
+List the hardware Habitat-Mapper can run models on, in the order `--device auto` tries them.
 
 ## hab clean
 
@@ -66,4 +75,5 @@ Apply a segmentation model to an input raster and save the output.
 * `BLUR, --blur`: Size of median blur kernel (must be odd, 0 to disable) *[default: 0]*
 * `MORPH, --morph`: Size of morphological kernel (must be odd, 0 to disable) *[default: 0]*
 * `BAND, --band, -b`: Band reordering flag for rearranging bands into RGB(+NIR) order when necessary.
+* `DEVICE, --device`: Hardware to run the model on. `auto` uses the fastest available device. Run `hab devices` to see what is available. Defaults to the HAB_DEVICE environment variable, or `auto` *[choices: auto, cpu, cuda, coreml, webgpu]*
 * `QUIET, --quiet, -q, --no-quiet`: Suppress progress output and non-error log messages (errors are still shown). *[default: False]*

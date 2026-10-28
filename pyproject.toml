@@ -15,7 +15,7 @@ dependencies = [
     "numba>=0.62",
     "numpy>=2.2.6",
     "onnxruntime>=1.31.1 ; platform_system == 'Darwin'",
-    "onnxruntime-gpu[cuda, cudnn]>=1.31.1 ; platform_system != 'Darwin'",
+    "onnxruntime-gpu>=1.31.1 ; platform_system != 'Darwin'",
     "opencv-python-headless>=4.11.0.86",
     "platformdirs>=4.3.8",
     "pydantic>=2.11.7",
@@ -25,6 +25,14 @@ dependencies = [
     "rioxarray>=0.19.0",
     "xarray>=2025.6.1",
     "xarray-spatial>=0.5.3",
+]
+
+[project.optional-dependencies]
+cuda = [
+    "onnxruntime-gpu[cuda, cudnn]>=1.31.1 ; platform_system != 'Darwin'",
+]
+webgpu = [
+    "onnxruntime-ep-webgpu>=0.4.0",
 ]
 
 [dependency-groups]
@@ -118,6 +126,7 @@ strict = true
 module = [
     "dask.*",
     "onnxruntime.*",
+    "onnxruntime_ep_webgpu.*",
     "rasterio.*"
 ]
 ignore_missing_imports = true

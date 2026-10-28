@@ -8,6 +8,8 @@
 | *running scripts is disabled on this system* (Windows)      | Run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` once, then activate again. |
 | GDAL errors during installation (Windows)                   | The environment is on a network or secondary drive. [Recreate it on `C:`](#i-get-gdal-errors-during-installation). |
 | `CUDA out of memory` or the program crashes on large images | Lower `--crop-size` (e.g. `512`) or `--batch-size`. See [Tune Processing](../guides/tune-processing.md). |
+| *An NVIDIA GPU was found but can't be used*                 | Install the CUDA libraries: `pip install "habitat-mapper[cuda]"`. See [GPU acceleration](../guides/install-advanced.md#gpu-acceleration). |
+| *Could not run the model on …*                              | That device couldn't run this model, so the CPU was used instead. Results are the same, just slower. |
 | `Permission denied` when writing the output                 | The output file is open in ArcGIS Pro or QGIS. Close it and try again.                                |
 | The output is completely black                              | Expected: display it with unique values. See [View Results in GIS](../get-started/view-results.md).   |
 | The output doesn't line up with the input                   | The input has no coordinate reference system. Assign one and rerun.                                   |
@@ -24,8 +26,8 @@ run:
 
 ### What kind of computer do I need?
 
-Any recent Windows, macOS or Linux computer will work. An NVIDIA GPU makes processing much faster, but isn't
-required. See [GPU acceleration](../guides/install-advanced.md#gpu-acceleration).
+Any recent Windows, macOS or Linux computer will work. A GPU makes processing much faster, but isn't required. GPU
+support is an install option. See [GPU acceleration](../guides/install-advanced.md#gpu-acceleration).
 
 ### I get GDAL errors during installation
 

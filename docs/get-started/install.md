@@ -52,6 +52,11 @@ With the environment active, run:
 uv pip install habitat-mapper
 ```
 
+!!! tip "Have a GPU?"
+    Habitat-Mapper runs on any computer's CPU. To use an NVIDIA GPU on Windows or Linux, install it with the CUDA
+    libraries instead: `uv pip install "habitat-mapper[cuda]"`. For other GPUs, see
+    [GPU acceleration](../guides/install-advanced.md#gpu-acceleration).
+
 ## 5. Check it worked
 
 ```bash

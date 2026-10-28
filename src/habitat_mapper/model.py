@@ -7,22 +7,20 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import numpy as np
-import onnxruntime as ort
 from loguru import logger
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidProtobuf
 
+from habitat_mapper.accelerators import create_session
 from habitat_mapper.config import ModelConfig
 from habitat_mapper.processing import ImageProcessor
-from habitat_mapper.utils import get_ort_providers, setup_cuda_paths, sigmoid, softmax
+from habitat_mapper.utils import sigmoid, softmax
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-# Load CUDA and CUDNN DLLs
-setup_cuda_paths()  # Workaround for Windows to ensure CUDA paths are set correctly
-ort.preload_dlls(directory="")
+    import onnxruntime as ort
 
-ort.set_default_logger_severity(3)  # Set to 3=ERROR
+    from habitat_mapper.accelerators import Device
 
 
 class ONNXModel:
@@ -36,7 +34,9 @@ class ONNXModel:
         """
         self.cfg = config
         self.__ort_sess: ort.InferenceSession | None = None
+        self.__ort_sess_device: Device | None = None
         self._quiet: bool = False
+        self._device: Device | None = None
 
     @classmethod
     def from_json_config(cls, config_path: str) -> ONNXModel:
@@ -65,23 +65,17 @@ class ONNXModel:
 
     @property
     def _ort_sess(self) -> ort.InferenceSession:
-        """Load and cache the ONNX Runtime session."""
-        if self.__ort_sess is not None:
+        """Load and cache the ONNX Runtime session for the requested device."""
+        if self.__ort_sess is not None and self.__ort_sess_device == self._device:
             return self.__ort_sess
 
         # Get local model path (handles download if needed)
         local_model_path = self.cfg.get_local_model_path(quiet=self._quiet)
 
-        # Load appropriate ONNX providers for OS capabilities
-        providers = get_ort_providers()
-
-        # Load the model
+        # Load the model on the best available hardware
         try:
-            self.__ort_sess = ort.InferenceSession(
-                str(local_model_path),
-                providers=providers,
-            )
-            self.__ort_sess.enable_fallback()
+            self.__ort_sess = create_session(local_model_path, device=self._device)
+            self.__ort_sess_device = self._device
         except InvalidProtobuf:
             logger.error("Failed to load ONNX model. Removing corrupted model file. Please try again.")
             local_model_path.unlink()
@@ -241,6 +235,7 @@ class ONNXModel:
         morph_kernel_size: int = 0,
         band_order: list[int] | None = None,
         quiet: bool = False,
+        device: Device | None = None,
     ) -> None:
         """Process an image using the default tiled processing strategy.
 
@@ -256,9 +251,12 @@ class ONNXModel:
             morph_kernel_size: Size of morphological kernel (0 to disable)
             band_order: A list of integers used to rearrange the input image channels. Indexed from 1 (like GDAL).
             quiet: If True, suppress progress bars during processing; log messages are not affected.
+            device: Hardware to run the model on: "auto", "cpu", "cuda", "coreml", or "webgpu". Defaults to the
+                HAB_DEVICE environment variable, or "auto", which picks the fastest available hardware.
 
         """
         self._quiet = quiet
+        self._device = device
         try:
             processor = ImageProcessor.from_model(
                 model=self,

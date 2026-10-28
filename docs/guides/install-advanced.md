@@ -21,10 +21,33 @@ cache, run `hab clean`.
 
 ## GPU acceleration
 
-A GPU is optional. On Windows and Linux, Habitat-Mapper installs the GPU build of ONNX Runtime, including CUDA
-libraries, and automatically uses a supported NVIDIA GPU when one is available. Otherwise it falls back to the
-CPU. On macOS it always runs on the CPU. With a GPU you can usually raise `--batch-size` (see
+A GPU is optional, and Habitat-Mapper runs on the CPU without one. GPU support is an install option, because the
+libraries are large and depend on your hardware:
+
+| Hardware                                   | Install                              | `--device` |
+|--------------------------------------------|--------------------------------------|------------|
+| NVIDIA GPU (Windows, Linux)                | `pip install "habitat-mapper[cuda]"`   | `cuda`     |
+| AMD, Intel or Apple GPU                    | `pip install "habitat-mapper[webgpu]"` | `webgpu`   |
+| Apple Neural Engine (macOS)                | included                             | `coreml`   |
+
+`[cuda]` needs a recent NVIDIA driver and downloads about 2–3 GB of CUDA libraries. `[webgpu]` uses DirectX 12 on
+Windows, Vulkan on Linux and Metal on macOS, so it only needs your normal graphics driver. You can install both.
+
+By default (`--device auto`), Habitat-Mapper uses the fastest device it finds: CUDA, then WebGPU, then the CPU. If a
+device can't run a model, it logs a warning and falls back to the next one. To see what it found, run:
+
+```bash
+hab devices
+```
+
+To choose a device yourself, pass `--device` to `hab segment`, `device=` to `model.process()`, or set the
+`HAB_DEVICE` environment variable. CoreML is only used when you ask for it. It compiles models slowly and wasn't
+faster than the CPU on the models we tested. With a GPU you can usually raise `--batch-size` (see
 [Tune Processing](tune-processing.md#batch-size-and-gpus)).
+
+!!! note "Upgrading from 0.14 or earlier"
+    The CUDA libraries used to install by default on Windows and Linux. If you use an NVIDIA GPU, reinstall with
+    `pip install "habitat-mapper[cuda]"` to keep using it.
 
 ## Updating
 

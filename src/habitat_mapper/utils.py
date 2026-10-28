@@ -3,17 +3,13 @@
 from __future__ import annotations
 
 import itertools
-import os
 import shutil
-import site
-import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-import onnxruntime as ort
 import platformdirs
 import requests
 from loguru import logger
@@ -225,25 +221,6 @@ def download_dependencies(model_config: ModelConfig, quiet: bool = False) -> lis
     return local_paths
 
 
-def get_ort_providers() -> list[str]:
-    """Get the ORT provider list for the current system and installation.
-
-    Returns:
-       list[str]: List of available ONNX Runtime providers in order of preference.
-    """
-    available_providers = ort.get_available_providers()
-    providers = []
-
-    if "NvTensorRtRtxExecutionProvider" in available_providers:
-        providers.append("NvTensorRtRtxExecutionProvider")
-
-    if "CUDAExecutionProvider" in available_providers:
-        providers.append("CUDAExecutionProvider")
-
-    providers.append("CPUExecutionProvider")
-    return providers
-
-
 def get_local_model_dir(model_name: str | None = None, revision: str | None = None) -> Path:
     """Get the path to the directory containing cached models.
 
@@ -315,34 +292,6 @@ def batched(iterable: Iterable[Any], n: int) -> Iterable[tuple[Any, ...]]:
         if not batch:
             break
         yield batch
-
-
-def setup_cuda_paths() -> None:
-    """Add CUDA DLL directories to PATH on Windows."""
-    if sys.platform != "win32":
-        return
-
-    # Find all NVIDIA bin directories in site-packages
-    dll_paths = []
-    for site_dir in site.getsitepackages():
-        nvidia_path = Path(site_dir) / "nvidia"
-        if nvidia_path.exists():
-            # Find all bin directories under nvidia/*
-            dll_paths.extend(str(p) for p in nvidia_path.glob("*/bin") if p.is_dir())
-
-    if not dll_paths:
-        return
-
-    # Add to PATH environment variable
-    os.environ["PATH"] = ";".join(dll_paths) + ";" + os.environ.get("PATH", "")
-
-    # Add as DLL directories for Python 3.8+
-    if hasattr(os, "add_dll_directory"):
-        for path in dll_paths:
-            try:
-                os.add_dll_directory(path)
-            except OSError:
-                pass
 
 
 def _is_odd_or_zero(value: int) -> int:

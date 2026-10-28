@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import itertools
 import os
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated
 
@@ -21,6 +21,7 @@ from rich.prompt import Confirm
 from rich.table import Table
 from rich.traceback import install
 
+from habitat_mapper.accelerators import DEVICE_ENV_VAR, Device, find_accelerators, select_accelerators
 from habitat_mapper.registry import model_registry
 from habitat_mapper.utils import get_local_model_dir, is_url
 
@@ -246,6 +247,38 @@ def revisions(
 
 @app.command
 @logger_catch
+def devices() -> None:
+    """List the hardware Habitat-Mapper can run models on, in the order `--device auto` tries them."""
+    auto = select_accelerators("auto")
+
+    table = Table(title="[bold green]Available Devices[/bold green]")
+    table.add_column("Device", style="cyan", no_wrap=True)
+    table.add_column("Hardware", style="white")
+    table.add_column("Execution Provider", style="magenta")
+    table.add_column("Auto", style="green")
+    for accelerator in find_accelerators():
+        order = auto.index(accelerator) + 1 if accelerator in auto else None
+        table.add_row(
+            accelerator.device,
+            accelerator.hardware,
+            accelerator.ep_name,
+            f"{order}" if order else "[dim]only with --device[/dim]",
+        )
+    console.print(table)
+
+    packages = []
+    for package in ("onnxruntime", "onnxruntime-gpu", "onnxruntime-ep-webgpu"):
+        try:
+            packages.append(f"{package} {version(package)}")
+        except PackageNotFoundError:
+            pass
+    console.print(f"[dim]Installed: {', '.join(packages)}[/dim]")
+    if device := os.environ.get(DEVICE_ENV_VAR):
+        console.print(f"[dim]{DEVICE_ENV_VAR}={device}[/dim]")
+
+
+@app.command
+@logger_catch
 def clean() -> None:
     """Clear the Habitat-Mapper model cache to free up space. Models will be re-downloaded as needed."""
     model_dir = get_local_model_dir()
@@ -397,6 +430,15 @@ def segment(
             negative="",
         ),
     ] = None,
+    device: Annotated[
+        Device | None,
+        Parameter(
+            help=(
+                f"Hardware to run the model on. `auto` uses the fastest available device. Run `hab devices` to see "
+                f"what is available. Defaults to the {DEVICE_ENV_VAR} environment variable, or `auto`"
+            ),
+        ),
+    ] = None,
     quiet: Annotated[
         bool,
         Parameter(
@@ -445,6 +487,7 @@ def segment(
             morph_kernel_size=morph_kernel_size,
             band_order=band_order,
             quiet=quiet,
+            device=device,
         )
 
         if not quiet:

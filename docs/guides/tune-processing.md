@@ -38,7 +38,8 @@ Python: `crop_size=3200`.
 ## Batch size and GPUs
 
 `--batch-size` sets how many tiles are processed at once. The default is 1. With a GPU, raising it to 4 or more can
-speed things up considerably. Lower it again if you get CUDA out-of-memory errors.
+speed things up considerably. Lower it again if you get out-of-memory errors. GPU support is an install option. See
+[GPU acceleration](install-advanced.md#gpu-acceleration), and use `--device` to choose the hardware.
 
 ```bash
 hab segment kelp-rgb input.tif output.tif --batch-size 4

@@ -42,6 +42,7 @@ model.process(
 | `morph_kernel_size` | `--morph`      | `0` (off)         | [Smoothing](tune-processing.md#smoothing-the-output)     |
 | `band_order`        | `-b`           | `None`            | [Band order](prepare-imagery.md#bands-are-in-red-green-blue-then-nir-order) |
 | `quiet`             | `--quiet`      | `False`           | [Process many images](batch-processing.md)               |
+| `device`            | `--device`     | `$HAB_DEVICE` or `"auto"` | [GPU acceleration](install-advanced.md#gpu-acceleration) |
 
 For example, an RGB+NIR image stored as Blue, Green, Red, NIR, processed in large tiles:
 

@@ -17,7 +17,9 @@ Common commands on one page. For every option, see the [CLI reference](cli.md). 
 | …in larger tiles (fewer seams)    | `hab segment kelp-rgb input.tif output.tif --crop-size 3200` |
 | …faster on a GPU                  | `hab segment kelp-rgb input.tif output.tif --batch-size 4`   |
 | …with smoothing                   | `hab segment kelp-rgb input.tif output.tif --blur 5 --morph 3` |
+| …on a specific device             | `hab segment kelp-rgb input.tif output.tif --device cpu`     |
 | …without progress bars            | `hab segment kelp-rgb input.tif output.tif --quiet`          |
+| List the devices models can run on | `hab devices`                                               |
 | Clear the model cache             | `hab clean`                                                  |
 
 Flags can also be written in long form: `hab segment -m kelp-rgb -i input.tif -o output.tif`.
