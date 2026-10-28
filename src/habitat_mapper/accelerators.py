@@ -102,6 +102,25 @@ def has_nvidia_driver() -> bool:
     return True
 
 
+def has_cudnn() -> bool:
+    """Check whether cuDNN can be loaded, either from the [cuda] extra or a system install.
+
+    The CUDA provider can create a session with only the CUDA toolkit installed, then fails on the first convolution
+    when cuDNN is missing. That failure happens after the device has been chosen, so it can't fall back to another one.
+
+    Returns:
+        True if the cuDNN library can be loaded.
+    """
+    library = {"win32": "cudnn64_9.dll", "linux": "libcudnn.so.9"}.get(sys.platform)
+    if library is None:
+        return False
+    try:
+        ctypes.CDLL(library)
+    except OSError:
+        return False
+    return True
+
+
 def setup_cuda_paths() -> None:
     """Add CUDA DLL directories to PATH on Windows."""
     if sys.platform != "win32":
@@ -188,6 +207,7 @@ def find_accelerators() -> tuple[Accelerator, ...]:
     nvidia = has_nvidia_driver()
     if nvidia:
         _load_cuda_libraries()
+    cudnn = nvidia and has_cudnn()
     webgpu_ep = _register_webgpu()
 
     ep_devices: dict[str, list[Any]] = {}
@@ -198,6 +218,8 @@ def find_accelerators() -> tuple[Accelerator, ...]:
     found: list[Accelerator] = []
     if nvidia:
         for ep in _CUDA_EPS:
+            if ep == "CUDAExecutionProvider" and not cudnn:
+                continue
             if ep in ep_devices:
                 found.append(Accelerator("cuda", ep, _describe(ep_devices[ep]), tuple(ep_devices[ep])))
             elif ep in available:

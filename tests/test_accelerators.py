@@ -36,12 +36,14 @@ def machine(monkeypatch: pytest.MonkeyPatch) -> Iterator[Machine]:
         ep_devices: tuple[SimpleNamespace, ...] = (),
         available: tuple[str, ...] = ("CPUExecutionProvider",),
         nvidia: bool = False,
+        cudnn: bool = True,
         webgpu: bool = False,
     ) -> list[bool]:
         devices = [_ep_device("CPUExecutionProvider", "Acme", "CPU"), *ep_devices]
         monkeypatch.setattr(accelerators.ort, "get_ep_devices", lambda: devices)
         monkeypatch.setattr(accelerators.ort, "get_available_providers", lambda: list(available))
         monkeypatch.setattr(accelerators, "has_nvidia_driver", lambda: nvidia)
+        monkeypatch.setattr(accelerators, "has_cudnn", lambda: cudnn)
         monkeypatch.setattr(accelerators, "_load_cuda_libraries", lambda: cuda_loaded.append(True))
         monkeypatch.setattr(accelerators, "_register_webgpu", lambda: "WebGpuExecutionProvider" if webgpu else None)
         return cuda_loaded
@@ -92,6 +94,25 @@ def test_nvidia_driver_without_cuda_libraries_warns(machine: Machine, capsys: py
     finally:
         logger.remove(handler)
     assert "habitat-mapper[cuda]" in capsys.readouterr().err
+
+
+def test_cuda_toolkit_without_cudnn_is_skipped(machine: Machine) -> None:
+    # A system CUDA toolkit lets the CUDA provider create a session, but it fails on the first convolution without cuDNN
+    machine(available=("CUDAExecutionProvider", "CPUExecutionProvider"), nvidia=True, cudnn=False, webgpu=True)
+    assert _devices(select_accelerators()) == ["cpu"]
+    with pytest.raises(RuntimeError, match=r"habitat-mapper\[cuda\]"):
+        select_accelerators("cuda")
+
+
+def test_cuda_toolkit_without_cudnn_uses_webgpu(machine: Machine) -> None:
+    machine(
+        ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),),
+        available=("CUDAExecutionProvider", "CPUExecutionProvider"),
+        nvidia=True,
+        cudnn=False,
+        webgpu=True,
+    )
+    assert _devices(select_accelerators()) == ["webgpu", "cpu"]
 
 
 def test_coreml_is_only_used_when_requested(machine: Machine) -> None:
