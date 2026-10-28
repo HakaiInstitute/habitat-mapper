@@ -73,7 +73,7 @@ hab segment kelp-skema /path/to/scene.SAFE kelp.tif
 
 | Revision             | Notes                                                                                                   |
 |----------------------|---------------------------------------------------------------------------------------------------------|
-| `20261014` (default) | SKeMa v0.4.0 weights, retrained with an updated loss function and pretrained initialization. Bands + spectral indices. |
+| `20261014` (default) | SKeMa v0.4.0: the final model evaluated in [Ghanbari *et al.* (2026)](https://doi.org/10.3390/rs18203604). |
 | `20260414`           | Earlier weights. Use `--rev 20260414` to reproduce results made with this revision.                     |
 
 ### Auxiliary-data models
@@ -93,13 +93,27 @@ best in that evaluation. To experiment with the auxiliary-data models, use the o
 
 U-Net with a MaxViT-Tiny encoder.
 
-### Performance and training data
+### Performance
 
-!!! note "Coming soon"
-    Performance metrics and training data details for SKeMa will be added here. In the meantime, the model's
-    development and evaluation are described in
-    [Ghanbari *et al.* (2026)](https://doi.org/10.3390/rs18203604). The default `20261014` weights were retrained
-    after that evaluation, so its published scores may not match them exactly.
+These results are from [Ghanbari *et al.* (2026)](https://doi.org/10.3390/rs18203604) and apply to the default
+`20261014` weights. They come from *scene-level cross-validation*: the model is tested on whole Sentinel-2 scenes it
+never saw in training. This is a stricter test than the validation splits reported for the other models, so the
+numbers aren't directly comparable. See [Performance Metrics](metrics.md).
+
+| Evaluation                        |    IoU | Precision | Recall |     F1 |
+|:----------------------------------|-------:|----------:|-------:|-------:|
+| Leave-one-scene-out (10 scenes)   | 0.6024 |    0.7261 | 0.7952 | 0.7491 |
+| Three-fold (3 scenes per fold)    | 0.5974 |    0.7126 | 0.8085 | 0.7466 |
+
+Accuracy varies with the size of the kelp beds. Across individual scenes, IoU ranged from 0.45, in a scene with small
+and sparse beds, to 0.70, in a scene with large, contiguous beds. Small beds are hard to resolve at Sentinel-2's 10 m
+resolution.
+
+### Training data
+
+The model was trained on 10 hand-annotated Sentinel-2 L2A scenes from coastal British Columbia. The annotated scenes
+are available on [Zenodo](https://doi.org/10.5281/zenodo.20106069), and the pre-extracted training tiles are on
+[Hugging Face](https://huggingface.co/datasets/m5ghanba/skema-kelp-tiles).
 
 ### Credit
 
