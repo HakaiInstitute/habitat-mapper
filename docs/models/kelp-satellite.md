@@ -65,8 +65,9 @@ hab segment kelp-skema /path/to/scene.SAFE kelp.tif
 
 - **Data:** an unzipped Sentinel-2 Level-2A `.SAFE` folder. See
   [Download Sentinel-2 Data](../guides/skema/download.md).
-- **Variants:** the default revision uses only Sentinel-2 bands and works anywhere. Other revisions add bathymetry
-  and substrate layers, and only apply to coastal British Columbia. See [Choose a Variant](../guides/skema/variants.md).
+- **Variants:** the default revision uses only Sentinel-2 bands and works anywhere. It's the recommended starting
+  point. Other revisions add substrate, bathymetry and slope layers, and only apply to coastal British Columbia.
+  See [Choose a Variant](../guides/skema/variants.md).
 
 ### Workflow
 

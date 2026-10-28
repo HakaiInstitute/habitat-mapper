@@ -38,6 +38,9 @@ acknowledge the contributors below.
 | `mussel-rgb`, `mussel-gooseneck-rgb`   | Software citation above.                                                                                                        |
 | `eelgrass-rgb`                         | Software citation above.                                                                                                        |
 
+If you used one of the BC-only `kelp-skema` variants, please also cite the substrate and bathymetry datasets listed
+under [Auxiliary data sources](guides/skema/variants.md#variants-at-a-glance).
+
 ??? example "BibTeX for `kelp-skema`"
 
     ```bibtex

@@ -1,21 +1,37 @@
 # Choose a SKeMa Variant
 
-SKeMa provides four model variants that trade off complexity against geographic applicability.
-Use the `--rev` flag (short for `--revision`) to select which one to run.
+SKeMa provides four model variants. They differ in whether they add auxiliary environmental layers to the
+Sentinel-2 bands, and so where they can be used. Use the `--rev` flag (short for `--revision`) to select one.
 
 ## Variants at a Glance
 
-| Revision | Input data | Applicable area | When to use |
-|---|---|---|---|
-| `20260414` | Sentinel-2 bands only | Anywhere | Best starting point; no auxiliary data needed |
-| `20260414-full` | Bands + bathymetry + substrate | Coastal BC only | Higher accuracy in BC when auxiliary data is available |
-| `20260414-ensemble` | Bands + bathymetry + substrate | Coastal BC only | Most accurate in BC; combines both approaches |
-| `20260414-full-bops` | Bands + bathymetry + 10 m BOPS substrate | Coastal BC only | Like `full`, using an alternative substrate layer |
+| Revision | Input data | Applicable area |
+|---|---|---|
+| `20260414` (default) | Sentinel-2 bands | Anywhere |
+| `20260414-full` | Bands + substrate + bathymetry + slope | Coastal BC only |
+| `20260414-ensemble` | Bands + substrate + bathymetry + slope | Coastal BC only |
+| `20260414-full-bops` | Bands + BoPs substrate (10 m) + bathymetry + slope | Coastal BC only |
 
-!!! warning "Geographic restriction for full and ensemble variants"
-    The `full`, `ensemble` and `full-bops` variants rely on bathymetry and substrate rasters covering
-    coastal British Columbia. They are **not applicable to areas outside of BC**.
-    Use the bands-only variant (`20260414`) for study areas elsewhere.
+!!! tip "Start with the default"
+    Use the bands-only default (`20260414`) unless you have a reason not to. In the published SKeMa evaluation
+    ([Ghanbari *et al.*, 2026](https://doi.org/10.3390/rs18203604)), adding substrate and bathymetry layers **did
+    not improve** kelp detection over Sentinel-2 data alone: IoU dropped from 0.60 to 0.58. The authors attribute
+    this to inaccuracies in the available substrate and bathymetry data. The Habitat-Mapper revisions are not
+    identical to the configurations tested in the paper, so treat the BC-only variants as alternatives to
+    compare, not as upgrades.
+
+!!! warning "Geographic restriction"
+    The `full`, `ensemble` and `full-bops` variants rely on auxiliary rasters that only cover coastal British
+    Columbia. They are **not applicable to areas outside of BC**. Habitat-Mapper downloads these rasters
+    automatically the first time you run one of these variants.
+
+??? info "Auxiliary data sources"
+    - **Substrate:** Gregr, E.J., Haggarty, D.R., Davies, S.C., Fields, C., & Lessard, J. Comprehensive marine
+      substrate classification applied to Canada's Pacific shelf. *PLoS ONE* 16, e0259156 (2021).
+      [https://doi.org/10.1371/journal.pone.0259156](https://doi.org/10.1371/journal.pone.0259156)
+    - **Bathymetry:** Davies, S.C., Gregr, E.J., Lessard, J., Bartier, P., & Wills, P. *Coastal Digital Elevation
+      Models Integrating Ocean Bathymetry and Land Topography for Marine Ecological Analyses in Pacific Canadian
+      Waters.* Fisheries and Oceans Canada (2019).
 
 ## Checking Available Revisions
 
@@ -58,6 +74,16 @@ Pass the revision to `--rev` along with the path to your `.SAFE` folder:
     hab segment \
         --model kelp-skema \
         --rev 20260414-ensemble \
+        --input /path/to/scene.SAFE \
+        --output kelp_output.tif
+    ```
+
+=== "Full BoPs (BC only)"
+
+    ```bash
+    hab segment \
+        --model kelp-skema \
+        --rev 20260414-full-bops \
         --input /path/to/scene.SAFE \
         --output kelp_output.tif
     ```
