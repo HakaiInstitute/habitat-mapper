@@ -4,7 +4,7 @@ version = "0.14.1"
 description = "Habitat segmentation with AI"
 readme = "README.md"
 authors = [{ name = "Taylor Denouden", email = "taylor.denouden@hakai.org" }]
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.11,<3.15"
 license = "MIT"
 dependencies = [
     "cyclopts>=3.22.2",
@@ -14,12 +14,12 @@ dependencies = [
     "loguru>=0.7.3",
     "numba>=0.62",
     "numpy>=2.2.6",
-    "onnxruntime>=1.22.1 ; platform_system == 'Darwin'",
-    "onnxruntime-gpu[cuda, cudnn]>=1.22.0 ; platform_system != 'Darwin'",
+    "onnxruntime>=1.31.1 ; platform_system == 'Darwin'",
+    "onnxruntime-gpu[cuda, cudnn]>=1.31.1 ; platform_system != 'Darwin'",
     "opencv-python-headless>=4.11.0.86",
     "platformdirs>=4.3.8",
     "pydantic>=2.11.7",
-    "rasterio>=1.4.3",
+    "rasterio>=1.4.4",
     "requests>=2.32.4",
     "rich>=13.0.0",
     "rioxarray>=0.19.0",
@@ -45,7 +45,7 @@ dev = [
     "types-requests>=2.32.4.20250809",
 ]
 docs = [
-    "click==8.2.1",
+    "click>=8.3.1",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.7.0",
     "mkdocstrings-python>=1.19.0",
@@ -54,7 +54,7 @@ examples = [
     "fiona>=1.10.1",
     "jupyter>=1.1.1",
     "polars>=1.33.0",
-    "rasterio>=1.4.3",
+    "rasterio>=1.4.4",
     "shapely>=2.1.1",
     "tqdm>=4.67.1",
 ]
@@ -66,7 +66,7 @@ Documentation = "https://habitat-mapper.readthedocs.io"
 hab = "habitat_mapper.main:app"
 
 [build-system]
-requires = ["uv_build>=0.11.16,<0.12"]
+requires = ["uv_build>=0.13.6,<0.14"]
 build-backend = "uv_build"
 
 [tool.ruff]
@@ -110,7 +110,7 @@ convention = "google"
 combine-as-imports = true
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = false
 warn_unused_configs = true
 strict = true
@@ -123,3 +123,11 @@ module = [
     "rasterio.*"
 ]
 ignore_missing_imports = true
+
+[tool.uv]
+# Only lock package versions that ship wheels for the platforms we test on
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+]
