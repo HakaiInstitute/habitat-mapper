@@ -16,6 +16,7 @@ from cyclopts.types import ExistingFile, File, PositiveInt  # noqa: TC002
 from loguru import logger
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
@@ -45,7 +46,12 @@ def _log_formatter(record: dict) -> str:
         "CRITICAL": "bold white on red",
     }
     lvl_color = color_map.get(record["level"].name, "cyan")
-    return f"[not bold cyan]{{time:YYYY-MM-DD HH:mm:ss}}[/not bold cyan] | [{lvl_color}]{{message}}[/{lvl_color}]"
+    # Escape the message so text in square brackets, like `habitat-mapper[cuda]`, isn't read as Rich markup
+    record["extra"]["escaped_message"] = escape(record["message"])
+    return (
+        f"[not bold cyan]{{time:YYYY-MM-DD HH:mm:ss}}[/not bold cyan] | "
+        f"[{lvl_color}]{{extra[escaped_message]}}[/{lvl_color}]"
+    )
 
 
 DEBUG = bool(os.getenv("DEBUG", False))
@@ -64,9 +70,7 @@ logger.add(
 
 # Decorator to log error messages
 logger_catch = logger.catch(
-    message=(
-        "[bold red]Program interrupted due to {record[exception].type.__name__}: '{record[exception].value}'[/bold red]"
-    ),
+    message="Program interrupted due to {record[exception].type.__name__}: '{record[exception].value}'",
     reraise=DEBUG,
 )
 

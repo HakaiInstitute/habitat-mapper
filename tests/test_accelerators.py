@@ -19,8 +19,22 @@ if TYPE_CHECKING:
     Machine = Callable[..., list[bool]]
 
 
-def _ep_device(ep_name: str, vendor: str, kind: str) -> SimpleNamespace:
-    return SimpleNamespace(ep_name=ep_name, device=SimpleNamespace(vendor=vendor, type=SimpleNamespace(name=kind)))
+def _ep_device(ep_name: str, vendor: str, kind: str, vendor_id: int = 0) -> SimpleNamespace:
+    return SimpleNamespace(
+        ep_name=ep_name, device=SimpleNamespace(vendor=vendor, vendor_id=vendor_id, type=SimpleNamespace(name=kind))
+    )
+
+
+def _log_output(level: str, action: Callable[[], object]) -> list[str]:
+    from loguru import logger  # noqa: PLC0415
+
+    messages: list[str] = []
+    handler = logger.add(messages.append, level=level, format="{level} {message}")
+    try:
+        action()
+    finally:
+        logger.remove(handler)
+    return [m.rstrip("\n") for m in messages]
 
 
 @pytest.fixture
@@ -237,6 +251,32 @@ def test_webgpu_on_a_software_renderer_is_skipped(machine: Machine, capsys: pyte
     finally:
         logger.remove(handler)
     assert "no Vulkan driver for your GPU" in capsys.readouterr().err
+
+
+def test_nvidia_without_cuda_or_vulkan_gets_one_warning(machine: Machine) -> None:
+    machine(
+        ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),),
+        nvidia=True,
+        webgpu=True,
+        hardware_gpu=False,
+    )
+    messages = _log_output("WARNING", select_accelerators)
+    assert len(messages) == 1
+    assert "habitat-mapper[cuda]" in messages[0]
+
+
+def test_nvidia_on_webgpu_is_told_cuda_is_faster(machine: Machine) -> None:
+    machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),), nvidia=True, webgpu=True)
+    messages = _log_output("INFO", select_accelerators)
+    assert messages == [
+        "INFO Install the CUDA libraries with `pip install 'habitat-mapper[cuda]'` for about 2x faster processing on "
+        "NVIDIA GPUs."
+    ]
+
+
+def test_hardware_is_named_from_the_vendor_id_when_ort_leaves_it_blank(machine: Machine) -> None:
+    machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "", "GPU", vendor_id=0x10DE),), webgpu=True)
+    assert select_accelerators()[0].hardware == "NVIDIA GPU"
 
 
 @pytest.mark.parametrize(

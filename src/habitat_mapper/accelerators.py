@@ -43,10 +43,15 @@ _CUDA_EPS = ("NvTensorRtRtxExecutionProvider", "CUDAExecutionProvider")
 # CoreML compiles slowly and ran slower than the CPU on our models, so it is only used when requested explicitly
 _EXCLUDED_FROM_AUTO = {"coreml"}
 
+# PCI vendor IDs, for devices that ONNX Runtime reports without a vendor name
+_VENDOR_NAMES = {0x10DE: "NVIDIA", 0x1002: "AMD", 0x1022: "AMD", 0x8086: "Intel", 0x106B: "Apple", 0x5143: "Qualcomm"}
+
+_CUDA_INSTALL = "`pip install 'habitat-mapper[cuda]'`"
+
 _UNAVAILABLE_HINTS = {
     "cuda": (
         "It needs an NVIDIA GPU with a recent driver and the CUDA libraries. "
-        "Install them with `pip install 'habitat-mapper[cuda]'` (Windows and Linux only)."
+        f"Install them with {_CUDA_INSTALL} (Windows and Linux only)."
     ),
     "coreml": "CoreML is only available on macOS.",
     "webgpu": "Install the WebGPU plugin with `pip install 'habitat-mapper[webgpu]'`.",
@@ -298,7 +303,10 @@ def _describe(ep_devices: Sequence[Any]) -> str:
     Returns:
         A short description, e.g. "Apple GPU, Apple NPU".
     """
-    names = (f"{d.device.vendor} {d.device.type.name}".strip() for d in ep_devices)
+    names = []
+    for d in ep_devices:
+        vendor = d.device.vendor or _VENDOR_NAMES.get(getattr(d.device, "vendor_id", None), "")
+        names.append(f"{vendor} {d.device.type.name}".strip())
     return ", ".join(dict.fromkeys(names))
 
 
@@ -334,18 +342,29 @@ def find_accelerators() -> tuple[Accelerator, ...]:
             elif ep in available:
                 found.append(Accelerator("cuda", ep, "NVIDIA GPU"))
 
+    cuda_found = bool(found)
+
+    webgpu_without_driver = False
     if webgpu_ep and webgpu_ep in ep_devices:
         if has_hardware_gpu_for_webgpu():
             webgpu_devices = tuple(ep_devices[webgpu_ep])
             found.append(Accelerator("webgpu", webgpu_ep, _describe(webgpu_devices), webgpu_devices))
         else:
-            logger.warning(
-                "The WebGPU plugin is installed, but no Vulkan driver for your GPU was found, so it won't be used. "
-                "Install your GPU vendor's Vulkan driver to enable it."
-            )
+            webgpu_without_driver = True
 
-    if nvidia and not found:
-        logger.warning(f"An NVIDIA GPU was found but can't be used. {_UNAVAILABLE_HINTS['cuda']}")
+    # Point NVIDIA users at [cuda], the fastest option for them, rather than at a Vulkan driver
+    if nvidia and not cuda_found:
+        if found:
+            logger.info(
+                f"Install the CUDA libraries with {_CUDA_INSTALL} for about 2x faster processing on NVIDIA GPUs."
+            )
+        else:
+            logger.warning(f"An NVIDIA GPU was found but can't be used. {_UNAVAILABLE_HINTS['cuda']}")
+    elif webgpu_without_driver:
+        logger.warning(
+            "The WebGPU plugin is installed, but no Vulkan driver for your GPU was found, so it won't be used. "
+            "Install your GPU vendor's Vulkan driver to enable it."
+        )
 
     if _COREML_EP in ep_devices:
         found.append(
