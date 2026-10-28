@@ -154,4 +154,4 @@ We follow [semantic versioning](https://semver.org/). To update to the latest ve
 ## Next Steps
 
 * **Beginners:** Head to [Processing Images](beginner_guide/execution.md) to run your first segmentation.
-* **Advanced:** Check the [CLI Reference](cli.md) for available command flags.
+* **Advanced:** Check the [CLI Reference](reference/cli.md) for available command flags.

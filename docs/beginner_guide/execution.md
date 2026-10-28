@@ -61,7 +61,7 @@ hab segment --model <NAME> --input <PATH> --output <PATH> [OPTIONS]
 | `--morph` | | Kernel size for morphological opening/closing. Default: `0`. |
 
 !!! note "Full Command Reference"
-    For complete documentation of all available flags and options, see the [CLI Reference](../cli.md).
+    For complete documentation of all available flags and options, see the [CLI Reference](../reference/cli.md).
 
 ---
 

@@ -143,7 +143,7 @@ See [Input Requirements](expectations.md) for details.
 | `--morph-kernel` | `--morph` | Morphological operation kernel size | `0` |
 | `--revision` | `--rev` | Specific model revision | `latest` |
 
-See [CLI Reference](cli.md) for complete flag documentation.
+See [CLI Reference](reference/cli.md) for complete flag documentation.
 
 ## Troubleshooting Quick Fixes
 
@@ -160,7 +160,7 @@ See [FAQs](faqs.md) for more troubleshooting help.
 ## Additional Resources
 
 - **[Beginner's Guide](beginner_guide/index.md)** - Step-by-step tutorial for new users
-- **[CLI Reference](cli.md)** - Complete command documentation
+- **[CLI Reference](reference/cli.md)** - Complete command documentation
 - **[Python API](python_lib.md)** - Library usage for scripting
 - **[Model Architecture](training_details.md)** - Technical details about models
 - **[Glossary](glossary.md)** - Definitions of geospatial terms

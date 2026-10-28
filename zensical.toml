@@ -21,7 +21,8 @@ nav = [
   { "Usage" = [
     { "Quick Reference" = "quick_reference.md" },
     { "Input Requirements" = "expectations.md" },
-    { "CLI Reference" = "cli.md" },
+    { "CLI Reference" = "reference/cli.md" },
+    { "CLI Examples" = "cli.md" },
     { "Python API" = "python_lib.md" },
     { "Model Output Reference" = "model_outputs.md" },
   ] },
