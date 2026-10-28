@@ -1,6 +1,6 @@
 # Installation
 
-Habitat-Mapper is available for Python versions 3.10 through 3.13.
+Habitat-Mapper is available for Python versions 3.11 through 3.14.
 
 Please select the installation method that best matches your experience level.
 
