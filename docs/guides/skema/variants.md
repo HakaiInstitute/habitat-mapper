@@ -1,6 +1,6 @@
-# Selecting a Model Variant
+# Choose a SKeMa Variant
 
-SKeMa provides three model variants that trade off complexity against geographic applicability.
+SKeMa provides four model variants that trade off complexity against geographic applicability.
 Use the `--rev` flag (short for `--revision`) to select which one to run.
 
 ## Variants at a Glance
@@ -10,9 +10,10 @@ Use the `--rev` flag (short for `--revision`) to select which one to run.
 | `20260414` | Sentinel-2 bands only | Anywhere | Best starting point; no auxiliary data needed |
 | `20260414-full` | Bands + bathymetry + substrate | Coastal BC only | Higher accuracy in BC when auxiliary data is available |
 | `20260414-ensemble` | Bands + bathymetry + substrate | Coastal BC only | Most accurate in BC; combines both approaches |
+| `20260414-full-bops` | Bands + bathymetry + 10 m BOPS substrate | Coastal BC only | Like `full`, using an alternative substrate layer |
 
 !!! warning "Geographic restriction for full and ensemble variants"
-    The `full` and `ensemble` variants rely on bathymetry and substrate rasters covering
+    The `full`, `ensemble` and `full-bops` variants rely on bathymetry and substrate rasters covering
     coastal British Columbia. They are **not applicable to areas outside of BC**.
     Use the bands-only variant (`20260414`) for study areas elsewhere.
 
@@ -63,5 +64,5 @@ Pass the revision to `--rev` along with the path to your `.SAFE` folder:
 
 ## Next Step
 
-Once you have your output raster, continue to [Post-Processing](post_processing.md) to
+Once you have your output raster, continue to [Post-Processing](post-process.md) to
 vectorize the result and optionally remove eelgrass false positives.

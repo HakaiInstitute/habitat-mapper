@@ -28,7 +28,7 @@ hide:
 
 *(The artist formerly known as "Kelp-O-Matic")*
 
-[Get Started :material-arrow-right:](beginner_guide/index.md){ .md-button .md-button--primary }
+[Get Started :material-arrow-right:](get-started/index.md){ .md-button .md-button--primary }
 [View on GitHub :material-github:](https://github.com/HakaiInstitute/habitat-mapper){ .md-button }
 
 </div>
@@ -37,108 +37,69 @@ hide:
 
 ## What is Habitat-Mapper?
 
-Habitat-Mapper is an open-source tool for segmenting geospatial imagery. It automates the detection of coastal species
-using deep learning, streamlining analysis for drone (RPAS), aerial, and satellite imagery.
+Habitat-Mapper is an open-source tool from the [Hakai Institute](https://hakai.org) that maps coastal habitats in
+drone, aerial and satellite imagery using deep learning. Give it a GeoTIFF and it returns a map of where each
+species was found, ready to open in ArcGIS Pro or QGIS.
 
 <div class="grid cards" markdown>
 
--   :material-leaf: **Kelp Detection**
+-   :material-leaf: **[Kelp from drones](models/kelp-drone.md)**
 
     ---
-    Detects *Macrocystis* and *Nereocystis* canopies in RGB and RGB+NIR fixed-wing and drone imagery.
+    *Macrocystis* and *Nereocystis* canopy in RGB and RGB+NIR drone imagery.
 
--   :material-waves: **Intertidal Life**
-
-    ---
-    Identifies Mussels and Gooseneck Barnacles in high-resolution RGB drone imagery.
-
--   :material-satellite-variant: **Satellite Scale**
+-   :material-satellite-variant: **[Kelp from satellites](models/kelp-satellite.md)**
 
     ---
-    Analyzes 8-band PlanetLabs satellite imagery for broad-scale kelp presence/absence.
+    Kelp canopy presence in PlanetScope 8-band and Sentinel-2 imagery.
+
+-   :material-waves: **[Mussels & barnacles](models/intertidal.md)**
+
+    ---
+    Mussels and gooseneck barnacles in high-resolution RGB drone imagery.
+
+-   :material-grass: **[Eelgrass](models/eelgrass.md)**
+
+    ---
+    Eelgrass (*Zostera marina*) in RGB drone imagery.
 
 </div>
 
-## Quick Start
+---
 
-Install and run your first segmentation in three steps.
+## Choose your path
 
-1. Install via `pip`
+<div class="grid cards" markdown>
+
+-   :material-school: **New to the terminal or Python?**
+
+    ---
+    Our step-by-step guide assumes no prior experience. It covers opening a terminal, installing the
+    software, processing your first image and viewing the results in GIS.
+
+    [:material-arrow-right: Start the Get Started guide](get-started/index.md)
+
+-   :material-console: **Comfortable with Python or the CLI?**
+
+    ---
     ```bash
     pip install habitat-mapper
+    hab models
+    hab segment kelp-rgb input.tif output.tif
     ```
 
-2. Check available models
-```bash
-hab models
-```
-
-<div align="center" markdown="1">
-
-| Model Name           | Revision | Description                                                             |
-|----------------------|----------|-------------------------------------------------------------------------|
-| eelgrass-rgb         | 20260402 | Eelgrass segmentation model for RGB drone imagery.                      |
-| kelp-ps8b            | 20260604 | Kelp segmentation model for 8-band PlanetScope imagery.                 |
-| kelp-rgb             | 20240722 | Kelp segmentation model for RGB drone imagery.                          |
-| kelp-rgbi            | 20231214 | Kelp segmentation model for 4-band RGB+NIR drone imagery.               |
-| kelp-skema (beta)    | 20260414 | Kelp segmentation model for Sentinel 2 L2A data.                        |
-| mussel-gooseneck-rgb | 20250725 | Mussel and gooseneck barnacle segmentation model for RGB drone imagery. |
-| mussel-rgb           | 20250711 | Mussel segmentation model for RGB drone imagery.                        |
+    [CLI reference](reference/cli.md) · [Python API](reference/python-api.md) ·
+    [Cheat sheet](reference/cheat-sheet.md) · [Models](models/index.md)
 
 </div>
 
-3. Segment an image
-```bash
-hab segment kelp-rgb input_image.tif output_mask.tif
-```
-
-!!! tip "New to the Command Line?"
-    Don't worry! We have a dedicated **[Beginner's Guide](beginner_guide/index.md)**
-    that walks you through setting up your terminal, installing the software, and processing your first image.
-
 ---
 
-## Choose Your Path
+!!! quote "Using Habitat-Mapper in your research?"
+    Please **[cite the software](cite.md)** and the papers behind the models you used. Habitat-Mapper is built on
+    data and models from many contributors. See the **[credits](credits.md)**.
 
-=== "New to Command Line Tools"
-
-    Never used a terminal before? Start here:
-
-    1. [Terminal Crash Course](beginner_guide/terminal_crash_course.md) - Learn basic terminal navigation
-    2. [Installation Guide](installation.md) - Set up the software step-by-step
-    3. [Your First Segmentation](beginner_guide/execution.md) - Process your first image
-    4. [Post-Processing Results](beginner_guide/post_processing.md) - Clean and analyze your data
-
-=== "Experienced Python Users"
-
-    Jump straight to what you need:
-
-    - [Installation](installation.md) - Quick `pip install habitat-mapper`
-    - [CLI Reference](reference/cli.md) - All command options
-    - [Python API](python_lib.md) - Use as a library in your scripts
-    - [Input Requirements](expectations.md) - Data format specifications
-
----
-
-## Project & Community
-
-### Contribute
-
-We welcome feedback\! If you encounter bugs or have feature requests, please use
-our [Issue Tracker](https://github.com/HakaiInstitute/habitat-mapper/issues).
-
-### Team
-
-This project was co-created at the [Hakai Institute](https://hakai.org) by:
-
-| Name                | Role                                          |
-|:--------------------|:----------------------------------------------|
-| **Taylor Denouden** | Machine Learning & Software Development       |
-| **Luba Reshitnyk**  | Scientific Application (Kelp), Data Collation |
-| **Will McInnes**    | Data Collation & Labelling (Mussels)          |
-| **Alyssa Gehman**   | Scientific Application (Mussels)              |
-
-### License
-
-Habitat-Mapper is released under
-the [MIT license](https://raw.githubusercontent.com/HakaiInstitute/habitat-mapper/main/LICENSE).
+**Questions or feedback?** [Email us](mailto:habitat.mapper.support@hakai.org) or
+[open an issue](https://github.com/HakaiInstitute/habitat-mapper/issues).
+Habitat-Mapper is released under the
+[MIT license](https://github.com/HakaiInstitute/habitat-mapper/blob/main/LICENSE).

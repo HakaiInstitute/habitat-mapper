@@ -1,4 +1,4 @@
-# Methods for Post-Processing Habitat-Mapper Output[^1]
+# Post-Process Drone Kelp[^1]
 
 This document describes the methods used for generating analysis ready data on
 species-level kelp extent from outputs from the Habitat-Mapper tool. Final outputs
@@ -16,7 +16,7 @@ These instructions use **ArcGIS Pro** (version 3.4+), but can also be adapted fo
     - **"Calculate Geometry"** → **Field Calculator** with expression `$area`
     - **"Select by Attribute"** → **Select Features Using an Expression** (toolbar button)
 
-For questions, please contact [Luba Reshitnyk](email:luba.reshitnyk@hakai.org) at
+For questions, please contact [Luba Reshitnyk](mailto:luba.reshitnyk@hakai.org) at
 the [Hakai Institute](https://hakai.org).
 
 ![Overview](./images/post_processing1.png)
@@ -42,10 +42,8 @@ graph TB
 
 ## Detailed Workflow
 
-This section assumes that you have obtained output from the Habitat-Mapper (.tif) and have
-a new
-instance of ArcGIS Pro (3.4). These same steps can be done using other GIS
-software (e.g. QGIS)
+This section assumes you have a Habitat-Mapper output (.tif) from `kelp-rgb` or `kelp-rgbi`
+open in a new ArcGIS Pro (3.4) project. The same steps work in other GIS software such as QGIS.
 
 ??? tip "Tip: ArcGIS Pro Keyboard Shortcuts"
 
@@ -66,16 +64,15 @@ software (e.g. QGIS)
 
 ### Load Habitat-Mapper Raster
 
-Load the output `.tif` file from Habitat-Mapper into ArcGIS Pro. The raster will have the
-following
-attributes:
+Load the output `.tif` file from Habitat-Mapper into ArcGIS Pro. The raster has these values:
 
-| Output value (gridcode) | Class                        |
-|------------------------:|------------------------------|
-|                   **0** | Background                   |
-|                   **1** | Kelp *(presence mode)*       |
-|                   **2** | Macrocystis *(species mode)* |
-|                   **3** | Nereocystis *(species mode)* |
+| Output value (gridcode) | Class                                |
+|------------------------:|--------------------------------------|
+|                   **0** | Background                           |
+|                   **1** | *Macrocystis pyrifera* (giant kelp)  |
+|                   **2** | *Nereocystis luetkeana* (bull kelp)  |
+
+These are the `kelp-rgb` and `kelp-rgbi` classes. See [Kelp: Drone](../models/kelp-drone.md#outputs).
 
 ### Convert to Polygons
 
@@ -137,14 +134,14 @@ scale is recommended.
 There may be some areas where the Habitat-Mapper classifier misclassified the species in a given area. These polygons can be edited manually. If you're just interested in presence/absence don't worry about this step.
 
 1. Select all polygon features classified as giant kelp by opening the attribute table
-   and `select by attribute`. Select features representing giant kelp by typing: `"gridcode" = 2`.
+   and `select by attribute`. Select features representing giant kelp by typing: `"gridcode" = 1`.
    At the bottom of the attribute table click on the `Show selected records` tab.
 2. Right-click the `species` field you created earlier. Select `Field Calculator`.
 3. In the text box enter `Macrocystis pyrifera` (with quotes included) and click OK.
    This will fill
    out that attribute for all the selected polygons.
 
-Repeat steps 1 - 3 for bull kelp by using `"gridcode" = 3` and `Nereocystis luetkeana`.
+Repeat steps 1 - 3 for bull kelp by using `"gridcode" = 2` and `Nereocystis luetkeana`.
 
 1. Review all the polygon species classification and manually change ones that the Habitat-Mapper
    classifier

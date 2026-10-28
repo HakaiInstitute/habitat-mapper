@@ -28,6 +28,15 @@
     (The artist formerly known as <i>"Kelp-O-Matic"</i>)
 </p>
 
+<p align="center">
+    Map kelp, mussels, gooseneck barnacles and eelgrass in drone and satellite imagery with deep learning.<br/>
+    Works from the command line or Python. No machine learning experience needed.
+</p>
+
 <h1 align="center">
     <a href="https://habitat-mapper.readthedocs.io">&#9758; Read the Docs &#9756;</a>
 </h1>
+
+<p align="center">
+    Using Habitat-Mapper in research? <a href="https://habitat-mapper.readthedocs.io/cite/">Please cite it</a>.
+</p>
