@@ -946,7 +946,7 @@ requires-dist = [
     { name = "onnxruntime-gpu", marker = "sys_platform != 'darwin'", specifier = ">=1.31.1" },
     { name = "onnxruntime-gpu", extras = ["cuda", "cudnn"], marker = "sys_platform != 'darwin' and extra == 'cuda'", specifier = ">=1.31.1" },
     { name = "opencv-python-headless", specifier = ">=4.11.0.86" },
-    { name = "platformdirs", specifier = "==4.14.0" },
+    { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "rasterio", specifier = ">=1.4.4" },
     { name = "requests", specifier = ">=2.32.4" },
