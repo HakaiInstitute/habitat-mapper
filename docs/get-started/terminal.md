@@ -1,4 +1,4 @@
-# Crash Course on the Terminal
+# Using the Terminal
 
 The terminal (or "Command Line") is a text-based way to talk to your computer. Instead of clicking icons, you type
 commands to tell the computer what to do.
@@ -133,4 +133,4 @@ Pasting commands into a terminal can be tricky.
 
 Now that you can move around, let's get the software installed.
 
-[:material-arrow-right: Go to Installation](../installation.md){ .md-button .md-button--primary }
+[:material-arrow-right: Next: Install](install.md){ .md-button .md-button--primary }

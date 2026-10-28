@@ -32,7 +32,7 @@ This page defines common geospatial and technical terms used throughout the Habi
 :   The process of classifying each pixel in an image into different categories (e.g., kelp, water, rock). Habitat-Mapper performs segmentation to identify where species are present.
 
 **Tiled GeoTIFF**
-:   A GeoTIFF organized internally into small square chunks (tiles) rather than as continuous rows. This structure dramatically speeds up reading small portions of large images, which is essential for Habitat-Mapper's sliding window approach.
+:   A GeoTIFF organized internally into small square chunks (tiles) rather than as continuous rows. This structure dramatically speeds up reading small portions of large images, which is essential for Habitat-Mapper's [tiled processing](../models/how-it-works.md#processing-large-images).
 
 ## Technical Terms
 
@@ -49,7 +49,7 @@ This page defines common geospatial and technical terms used throughout the Habi
 :   The process of applying a trained machine learning model to new data to make predictions. When you run `hab segment`, you're performing inference on your imagery.
 
 **Model**
-:   A trained deep learning algorithm that has learned to recognize patterns in imagery. Habitat-Mapper includes multiple models for different sensors and species (e.g., `kelp-rgb`, `mussel-gooseneck-rgb`).
+:   A trained deep learning algorithm that has learned to recognize patterns in imagery. Habitat-Mapper includes multiple [models](../models/index.md) for different sensors and species (e.g., `kelp-rgb`, `mussel-gooseneck-rgb`).
 
 **ONNX**
 :   Open Neural Network Exchange, a standard format for saving machine learning models. Habitat-Mapper uses ONNX models so they can run efficiently on different hardware without needing specific deep learning frameworks.
@@ -62,6 +62,6 @@ This page defines common geospatial and technical terms used throughout the Habi
 
 ## Related Resources
 
-- [Input Requirements](expectations.md) - Technical specifications for imagery
-- [Terminal Crash Course](beginner_guide/terminal_crash_course.md) - Introduction to command line basics
-- [FAQs](faqs.md) - Answers to common questions
+- [Prepare Your Imagery](../guides/prepare-imagery.md) - Technical specifications for imagery
+- [Using the Terminal](../get-started/terminal.md) - Introduction to command line basics
+- [Troubleshooting & FAQ](../help/faq.md) - Answers to common questions

@@ -7,41 +7,50 @@ edit_uri = "edit/main/docs/"
 
 nav = [
   { "Home" = "index.md" },
-  { "Getting Started" = [
-    { "Overview" = "beginner_guide/index.md" },
-    { "Prerequisites" = [
-      { "Terminal Crash Course" = "beginner_guide/terminal_crash_course.md" },
+  { "Get Started" = [
+    "get-started/index.md",
+    { "1. Using the Terminal" = "get-started/terminal.md" },
+    { "2. Install" = "get-started/install.md" },
+    { "3. Your First Segmentation" = "get-started/first-segmentation.md" },
+    { "4. View Results in GIS" = "get-started/view-results.md" },
+  ] },
+  { "Guides" = [
+    { "Prepare Your Imagery" = "guides/prepare-imagery.md" },
+    { "Tune Processing" = "guides/tune-processing.md" },
+    { "Process Many Images" = "guides/batch-processing.md" },
+    { "Post-Process Drone Kelp" = "guides/post-process-kelp-drone.md" },
+    { "Satellite Kelp with SKeMa" = [
+      { "Download Sentinel-2 Data" = "guides/skema/download.md" },
+      { "Choose a Variant" = "guides/skema/variants.md" },
+      { "Post-Process" = "guides/skema/post-process.md" },
     ] },
-    { "Installation" = "installation.md" },
-    { "First Segmentation" = [
-      { "Processing Images" = "beginner_guide/execution.md" },
-      { "Post-Processing" = "beginner_guide/post_processing.md" },
-    ] },
+    { "Use from Python" = "guides/python.md" },
+    { "Install for Python Users" = "guides/install-advanced.md" },
+    { "Upgrade from Kelp-O-Matic" = "guides/upgrade-from-kom.md" },
   ] },
-  { "Usage" = [
-    { "Quick Reference" = "quick_reference.md" },
-    { "Input Requirements" = "expectations.md" },
-    { "CLI Reference" = "reference/cli.md" },
-    { "CLI Examples" = "cli.md" },
-    { "Python API" = "python_lib.md" },
-    { "Model Output Reference" = "model_outputs.md" },
+  { "Models" = [
+    "models/index.md",
+    { "Kelp: Drone" = "models/kelp-drone.md" },
+    { "Kelp: Satellite" = "models/kelp-satellite.md" },
+    { "Mussels & Barnacles" = "models/intertidal.md" },
+    { "Eelgrass" = "models/eelgrass.md" },
+    { "How the Models Work" = "models/how-it-works.md" },
+    { "Performance Metrics" = "models/metrics.md" },
   ] },
-  { "Tutorials" = [
-    { "SKeMa Satellite Kelp Mapping" = [
-      { "Downloading Sentinel-2 Data" = "tutorials/skema/downloading_data.md" },
-      { "Selecting a Model Variant" = "tutorials/skema/model_variants.md" },
-      { "Post-Processing" = "tutorials/skema/post_processing.md" },
-    ] },
+  { "Reference" = [
+    { "CLI" = "reference/cli.md" },
+    { "Python API" = "reference/python-api.md" },
+    { "Cheat Sheet" = "reference/cheat-sheet.md" },
+    { "Glossary" = "reference/glossary.md" },
   ] },
-  { "Model Details" = [
-    { "Model Architecture" = "training_details.md" },
-    { "Performance Metrics" = "model_performance.md" },
+  { "Help" = [
+    { "Troubleshooting & FAQ" = "help/faq.md" },
+    { "Report an Issue" = "https://github.com/HakaiInstitute/habitat-mapper/issues" },
   ] },
-  { "Help & About" = [
-    { "FAQs" = "faqs.md" },
-    { "Glossary" = "glossary.md" },
-    { "Attribution" = "attribution.md" },
-    { "Issue Tracker" = "https://github.com/HakaiInstitute/habitat-mapper/issues" },
+  { "Cite & Credits" = [
+    { "How to Cite" = "cite.md" },
+    { "Credits" = "credits.md" },
+    { "License" = "https://github.com/HakaiInstitute/habitat-mapper/blob/main/LICENSE" },
   ] },
 ]
 
@@ -95,6 +104,7 @@ description = """
 """
 
 [project.markdown_extensions]
+abbr = {}
 admonition = {}
 attr_list = {}
 md_in_html = {}
@@ -116,6 +126,36 @@ pymdownx.tabbed.alternate_style = true
 pymdownx.tabbed.slugify.object = "pymdownx.slugs.slugify"
 pymdownx.tabbed.slugify.kwds.case = "lower"
 pymdownx.tasklist.custom_checkbox = true
+pymdownx.snippets.base_path = ["includes"]
+pymdownx.snippets.auto_append = ["abbreviations.md"]
+pymdownx.snippets.check_paths = true
 
 [project.plugins.mkdocstrings.handlers.python.options]
 docstring_style = "google"
+show_root_heading = true
+heading_level = 3
+members_order = "source"
+merge_init_into_class = true
+separate_signature = true
+show_signature_annotations = true
+filters = ["!^_"]
+
+[project.plugins.redirects.redirect_maps]
+"beginner_guide/index.md" = "get-started/index.md"
+"beginner_guide/terminal_crash_course.md" = "get-started/terminal.md"
+"installation.md" = "get-started/install.md"
+"beginner_guide/execution.md" = "get-started/first-segmentation.md"
+"beginner_guide/post_processing.md" = "guides/post-process-kelp-drone.md"
+"tutorials/skema/downloading_data.md" = "guides/skema/download.md"
+"tutorials/skema/model_variants.md" = "guides/skema/variants.md"
+"tutorials/skema/post_processing.md" = "guides/skema/post-process.md"
+"quick_reference.md" = "reference/cheat-sheet.md"
+"expectations.md" = "guides/prepare-imagery.md"
+"cli.md" = "reference/cli.md"
+"python_lib.md" = "guides/python.md"
+"model_outputs.md" = "models/index.md"
+"training_details.md" = "models/how-it-works.md"
+"model_performance.md" = "models/index.md"
+"faqs.md" = "help/faq.md"
+"glossary.md" = "reference/glossary.md"
+"attribution.md" = "credits.md"
