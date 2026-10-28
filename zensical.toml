@@ -1,0 +1,120 @@
+[project]
+site_name = "Habitat-Mapper"
+site_url = "https://habitat-mapper.readthedocs.io/"
+repo_url = "https://github.com/HakaiInstitute/habitat-mapper"
+repo_name = "HakaiInstitute/habitat-mapper"
+edit_uri = "edit/main/docs/"
+
+nav = [
+  { "Home" = "index.md" },
+  { "Getting Started" = [
+    { "Overview" = "beginner_guide/index.md" },
+    { "Prerequisites" = [
+      { "Terminal Crash Course" = "beginner_guide/terminal_crash_course.md" },
+    ] },
+    { "Installation" = "installation.md" },
+    { "First Segmentation" = [
+      { "Processing Images" = "beginner_guide/execution.md" },
+      { "Post-Processing" = "beginner_guide/post_processing.md" },
+    ] },
+  ] },
+  { "Usage" = [
+    { "Quick Reference" = "quick_reference.md" },
+    { "Input Requirements" = "expectations.md" },
+    { "CLI Reference" = "cli.md" },
+    { "Python API" = "python_lib.md" },
+    { "Model Output Reference" = "model_outputs.md" },
+  ] },
+  { "Tutorials" = [
+    { "SKeMa Satellite Kelp Mapping" = [
+      { "Downloading Sentinel-2 Data" = "tutorials/skema/downloading_data.md" },
+      { "Selecting a Model Variant" = "tutorials/skema/model_variants.md" },
+      { "Post-Processing" = "tutorials/skema/post_processing.md" },
+    ] },
+  ] },
+  { "Model Details" = [
+    { "Model Architecture" = "training_details.md" },
+    { "Performance Metrics" = "model_performance.md" },
+  ] },
+  { "Help & About" = [
+    { "FAQs" = "faqs.md" },
+    { "Glossary" = "glossary.md" },
+    { "Attribution" = "attribution.md" },
+    { "Issue Tracker" = "https://github.com/HakaiInstitute/habitat-mapper/issues" },
+  ] },
+]
+
+extra_css = ["stylesheets/extra.css"]
+extra_javascript = [
+  "javascripts/header-link.js",
+  "javascripts/mathjax.js",
+  "https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js",
+]
+
+[project.theme]
+language = "en"
+features = [
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.sections",
+  "navigation.top",
+  "navigation.footer",
+  "navigation.instant.prefetch",
+  "content.tabs.link",
+  "content.code.copy",
+]
+
+[project.theme.palette]
+primary = "teal"
+
+[project.theme.icon]
+logo = "material/shore"
+
+[project.extra.analytics]
+provider = "google"
+property = "G-RSSQERRJ3Q"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/linkedin"
+link = "https://ca.linkedin.com/company/hakai-institute"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/instagram"
+link = "https://www.instagram.com/hakaiinstitute"
+
+[project.extra.consent]
+title = "Cookie consent"
+description = """
+  We use cookies to recognize your repeated visits and preferences, as well
+  as to measure the effectiveness of our documentation and whether users
+  find what they're searching for. With your consent, you're helping us to
+  make our documentation better.
+"""
+
+[project.markdown_extensions]
+admonition = {}
+attr_list = {}
+md_in_html = {}
+def_list = {}
+footnotes = {}
+tables = {}
+toc.toc_depth = 3
+pymdownx.caret = {}
+pymdownx.details = {}
+pymdownx.keys = {}
+pymdownx.tilde = {}
+pymdownx.arithmatex.generic = true
+pymdownx.emoji.emoji_index = "zensical.extensions.emoji.twemoji"
+pymdownx.emoji.emoji_generator = "zensical.extensions.emoji.to_svg"
+pymdownx.superfences.custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
+pymdownx.tabbed.alternate_style = true
+pymdownx.tabbed.slugify.object = "pymdownx.slugs.slugify"
+pymdownx.tabbed.slugify.kwds.case = "lower"
+pymdownx.tasklist.custom_checkbox = true
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_style = "google"
