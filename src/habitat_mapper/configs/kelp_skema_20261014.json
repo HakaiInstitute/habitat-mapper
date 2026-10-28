@@ -1,0 +1,14 @@
+{
+  "name": "kelp-skema",
+  "revision": "20261014",
+  "description": "Kelp segmentation model for Sentinel 2 L2A data.",
+  "dependencies": [
+    "https://huggingface.co/HakaiInstitute/kelp-skema/resolve/refs%2Fpr%2F6/Unet_tu-maxvit_tiny_tf_512_20261014.onnx"
+  ],
+  "model_filename": "Unet_tu-maxvit_tiny_tf_512_20261014.onnx",
+  "normalization": null,
+  "input_channels": 5,
+  "max_pixel_value": 1.0,
+  "activation": "sigmoid",
+  "reader_cls": "habitat_mapper.reader.SAFEReader"
+}
