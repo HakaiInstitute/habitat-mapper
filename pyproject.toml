@@ -7,7 +7,7 @@ authors = [{ name = "Taylor Denouden", email = "taylor.denouden@hakai.org" }]
 requires-python = ">=3.11,<3.15"
 license = "MIT"
 dependencies = [
-    "cyclopts>=3.22.2",
+    "cyclopts>=4.23.0",
     "defusedxml>=0.7.1",
     "deprecation>=2.1.0",
     "humanize>=4.12.3",
@@ -45,10 +45,8 @@ dev = [
     "types-requests>=2.32.4.20250809",
 ]
 docs = [
-    "click>=8.3.1",
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.7.0",
     "mkdocstrings-python>=1.19.0",
+    "zensical>=0.0.73",
 ]
 examples = [
     "fiona>=1.10.1",

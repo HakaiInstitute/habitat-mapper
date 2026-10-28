@@ -41,7 +41,7 @@ class ImageProcessor:
         *,
         crop_size: int | None = None,
         batch_size: int = 1,
-        blur_kernel_size: int = 5,
+        blur_kernel_size: int = 0,
         morph_kernel_size: int = 0,
         band_order: list[int] | None = None,
         quiet: bool = False,
@@ -52,7 +52,7 @@ class ImageProcessor:
             model: The ONNX model to use
             crop_size: Tile size for processing (uses model's preferred size if None)
             batch_size: Batch size for processing
-            blur_kernel_size: Size of median blur kernel (must be odd)
+            blur_kernel_size: Size of median blur kernel (must be odd, 0 to disable)
             morph_kernel_size: Size of morphological kernel (0 to disable)
             band_order: List of band indices (1-based like GDAL)
             quiet: If True, use NullProgressReporter to suppress all progress output.

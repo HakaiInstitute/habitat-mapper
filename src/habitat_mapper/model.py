@@ -237,7 +237,7 @@ class ONNXModel:
         *,
         batch_size: int = 1,
         crop_size: int | None = None,
-        blur_kernel_size: int = 5,
+        blur_kernel_size: int = 0,
         morph_kernel_size: int = 0,
         band_order: list[int] | None = None,
         quiet: bool = False,
@@ -252,7 +252,7 @@ class ONNXModel:
             output_path: Path to output segmentation raster
             batch_size: Batch size for processing
             crop_size: Tile size for processing (uses model's preferred size if None)
-            blur_kernel_size: Size of median blur kernel (must be odd)
+            blur_kernel_size: Size of median blur kernel (must be odd, 0 to disable)
             morph_kernel_size: Size of morphological kernel (0 to disable)
             band_order: A list of integers used to rearrange the input image channels. Indexed from 1 (like GDAL).
             quiet: If True, suppress progress bars during processing; log messages are not affected.

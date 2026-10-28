@@ -114,7 +114,7 @@ hab segment kelp-rgb input_image.tif output_mask.tif
     Jump straight to what you need:
 
     - [Installation](installation.md) - Quick `pip install habitat-mapper`
-    - [CLI Reference](cli.md) - All command options
+    - [CLI Reference](reference/cli.md) - All command options
     - [Python API](python_lib.md) - Use as a library in your scripts
     - [Input Requirements](expectations.md) - Data format specifications
 

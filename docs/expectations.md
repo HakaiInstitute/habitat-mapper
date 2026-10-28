@@ -20,7 +20,7 @@ The RGB channels are required, and the Near Infrared channel is optional. Extra 
 are ignored. The NIR channel is used when using the RGBI models, and will be ignored
 when using the RGB models.
 
-If you have a different channel order, you can use `-b` CLI flags (see [docs](cli.md))
+If you have a different channel order, you can use `-b` CLI flags (see the [CLI Reference](reference/cli.md#hab-segment))
 to specify which band indices to use for each channel. For example, if your image has
 Blue, Green, Red, and Near Infrared channels, you can use `-b 3 -b 2 -b 1 -b 4` flags
 to specify the order of the channels. Similarly, if using the python library functions,
