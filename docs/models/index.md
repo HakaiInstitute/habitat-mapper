@@ -8,7 +8,7 @@ model name with `hab segment`. Run `hab models` to see the latest revision of ea
 | `kelp-rgb`             | Drone / aerial              | Red, Green, Blue                      | Giant kelp, bull kelp                   | [Kelp: Drone](kelp-drone.md)               |
 | `kelp-rgbi`            | Drone / aerial              | Red, Green, Blue, NIR                 | Giant kelp, bull kelp                   | [Kelp: Drone](kelp-drone.md)               |
 | `kelp-ps8b`            | PlanetScope satellite       | 8-band surface reflectance            | Kelp                                    | [Kelp: Satellite](kelp-satellite.md)       |
-| `kelp-skema` (beta)    | Sentinel-2 satellite        | L2A `.SAFE` folder                    | Kelp                                    | [Kelp: Satellite](kelp-satellite.md)       |
+| `kelp-skema`           | Sentinel-2 satellite        | L2A `.SAFE` folder                    | Kelp                                    | [Kelp: Satellite](kelp-satellite.md)       |
 | `mussel-rgb`           | Drone                       | Red, Green, Blue                      | Mussels                                 | [Mussels & Barnacles](intertidal.md)       |
 | `mussel-gooseneck-rgb` | Drone                       | Red, Green, Blue                      | Mussels, gooseneck barnacles            | [Mussels & Barnacles](intertidal.md)       |
 | `eelgrass-rgb`         | Drone                       | Red, Green, Blue                      | Eelgrass                                | [Eelgrass](eelgrass.md)                    |

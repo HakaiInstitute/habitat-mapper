@@ -5,7 +5,7 @@ Two models map kelp canopy *presence* (not species) in satellite imagery, for re
 | Model               | Use for                                          |
 |---------------------|--------------------------------------------------|
 | `kelp-ps8b`         | PlanetScope 8-band surface reflectance imagery   |
-| `kelp-skema` (beta) | Sentinel-2 Level-2A imagery (`.SAFE` folders)    |
+| `kelp-skema`         | Sentinel-2 Level-2A imagery (`.SAFE` folders)    |
 
 ## Outputs
 
@@ -53,7 +53,7 @@ SegFormer with a MiT-B3 encoder.
 
 ---
 
-## `kelp-skema` (beta)
+## `kelp-skema`
 
 SKeMa takes a Sentinel-2 L2A `.SAFE` folder directly. Habitat-Mapper reads the bands it needs from that folder.
 
@@ -65,14 +65,13 @@ hab segment kelp-skema /path/to/scene.SAFE kelp.tif
 
 - **Data:** an unzipped Sentinel-2 Level-2A `.SAFE` folder. See
   [Download Sentinel-2 Data](../guides/skema/download.md).
-- **Variants:** the default revision uses only Sentinel-2 bands and works anywhere. It's the recommended starting
-  point. Other revisions add substrate, bathymetry and slope layers, and only apply to coastal British Columbia.
-  See [Choose a Variant](../guides/skema/variants.md).
+- **Bands:** Blue (B2), Green (B3), Red (B4), NIR (B8) and Red-edge 1 (B5), read automatically from the `.SAFE`
+  folder.
 
 ### Workflow
 
 1. [Download Sentinel-2 Data](../guides/skema/download.md)
-2. [Choose a Variant](../guides/skema/variants.md)
+2. [Run SKeMa](../guides/skema/run.md)
 3. [Post-Process](../guides/skema/post-process.md), including removing eelgrass false positives
 
 ### Architecture

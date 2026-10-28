@@ -75,5 +75,4 @@ S2A_MSIL2A_20230801T193851_N0509_R042_T10UED_20230802T003016.SAFE/
 
 ## Next Step
 
-With your `.SAFE` folder ready, continue to [Selecting a Model Variant](variants.md)
-to choose which SKeMa model to run and how to invoke it.
+With your `.SAFE` folder ready, continue to [Run SKeMa](run.md).
