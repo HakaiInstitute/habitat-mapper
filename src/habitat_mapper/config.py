@@ -182,7 +182,7 @@ class ProcessingConfig(BaseModel):
     crop_size: Annotated[int, Field(gt=0, multiple_of=2)]
     band_order: Annotated[list[int], Field(min_length=1), AfterValidator(_all_positive)]
     batch_size: PositiveInt = 1
-    blur_kernel_size: Annotated[int, Field(ge=0), AfterValidator(_is_odd_or_zero)] = 5
+    blur_kernel_size: Annotated[int, Field(ge=0), AfterValidator(_is_odd_or_zero)] = 0
     morph_kernel_size: Annotated[int, Field(ge=0), AfterValidator(_is_odd_or_zero)] = 0
 
     @property
