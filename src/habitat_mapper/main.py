@@ -49,11 +49,14 @@ def _log_formatter(record: dict) -> str:
 
 DEBUG = bool(os.getenv("DEBUG", False))
 
+# Hide debug and trace messages unless DEBUG is set
+LOG_LEVEL = "TRACE" if DEBUG else "INFO"
+
 # Setup Rich logger handler
 logger.remove()
 logger.add(
     console.print,
-    level="TRACE",
+    level=LOG_LEVEL,
     format=_log_formatter,
     colorize=None,
 )
@@ -456,7 +459,7 @@ def segment(
     finally:
         if quiet:
             logger.remove()
-            logger.add(console.print, level="TRACE", format=_log_formatter, colorize=None)
+            logger.add(console.print, level=LOG_LEVEL, format=_log_formatter, colorize=None)
 
 
 @app.command(show=False)
