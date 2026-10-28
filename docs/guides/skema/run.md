@@ -10,6 +10,14 @@ Habitat-Mapper reads the Sentinel-2 bands it needs straight from the `.SAFE` fol
 or stack bands yourself. The output is a GeoTIFF on the Sentinel-2 10 m grid, in which `1` is kelp and `0` is
 background.
 
+This runs the latest SKeMa revision. To reproduce results made with an earlier revision, pass it with `--rev`, for
+example `--rev 20260414`. See [revisions](../../models/kelp-satellite.md#revisions).
+
+!!! note "Auxiliary-data models"
+    Habitat-Mapper runs the Sentinel-2-only SKeMa model. The bathymetry and substrate models described in the SKeMa
+    paper are available in the original [SKeMa tool](https://github.com/m5ghanba/skema). See
+    [Kelp: Satellite](../../models/kelp-satellite.md#auxiliary-data-models).
+
 !!! tip "Use quotes if the path contains spaces"
     `hab segment kelp-skema "C:\My Data\scene.SAFE" kelp_output.tif`
 

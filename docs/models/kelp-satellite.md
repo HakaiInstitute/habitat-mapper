@@ -66,7 +66,22 @@ hab segment kelp-skema /path/to/scene.SAFE kelp.tif
 - **Data:** an unzipped Sentinel-2 Level-2A `.SAFE` folder. See
   [Download Sentinel-2 Data](../guides/skema/download.md).
 - **Bands:** Blue (B2), Green (B3), Red (B4), NIR (B8) and Red-edge 1 (B5), read automatically from the `.SAFE`
-  folder.
+  folder. The model computes five spectral indices from these bands itself (NDVI, NDWI, GNDVI, CIG and NDVIre), so
+  no other input data is needed.
+
+### Revisions
+
+| Revision             | Notes                                                                                                   |
+|----------------------|---------------------------------------------------------------------------------------------------------|
+| `20261014` (default) | SKeMa v0.4.0 weights, retrained with an updated loss function and pretrained initialization. Bands + spectral indices. |
+| `20260414`           | Earlier weights. Use `--rev 20260414` to reproduce results made with this revision.                     |
+
+### Auxiliary-data models
+
+[Ghanbari *et al.* (2026)](https://doi.org/10.3390/rs18203604) also evaluated SKeMa models that add bathymetry and
+substrate layers for coastal British Columbia. Habitat-Mapper only includes the Sentinel-2-only model, which performed
+best in that evaluation. To experiment with the auxiliary-data models, use the original SKeMa tool at
+[github.com/m5ghanba/skema](https://github.com/m5ghanba/skema).
 
 ### Workflow
 
@@ -83,7 +98,8 @@ U-Net with a MaxViT-Tiny encoder.
 !!! note "Coming soon"
     Performance metrics and training data details for SKeMa will be added here. In the meantime, the model's
     development and evaluation are described in
-    [Ghanbari *et al.* (2026)](https://doi.org/10.3390/rs18203604).
+    [Ghanbari *et al.* (2026)](https://doi.org/10.3390/rs18203604). The default `20261014` weights were retrained
+    after that evaluation, so its published scores may not match them exactly.
 
 ### Credit
 
