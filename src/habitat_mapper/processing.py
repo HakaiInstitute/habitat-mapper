@@ -168,24 +168,23 @@ class ImageProcessor:
                         # Read tile data from source raster
                         input_batch = self._load_batch(reader, window_batch)
 
-                        # Shortcut to write zeros if all pixels have the same value in each img
-                        for i, (window, img) in enumerate(zip(window_batch, input_batch)):
-                            if np.all(img == img.flatten()[0]):
-                                clipped_window = self._clip_window_to_image_bounds(window, height, width)
+                        # Shortcut to write the default value if all pixels have the same value in each img
+                        blank = np.array([np.all(img == img.flat[0]) for img in input_batch], dtype=bool)
+                        for window in (w for w, b in zip(window_batch, blank) if b):
+                            clipped_window = self._clip_window_to_image_bounds(window, height, width)
 
-                                # Skip windows that are completely outside the image bounds
-                                if clipped_window is not None:
-                                    data = (
-                                        np.ones((clipped_window.height, clipped_window.width), dtype=np.uint8)
-                                        * self.model.cfg.default_output_value
-                                    )
-                                    dst.write(data, 1, window=clipped_window)
+                            # Skip windows that are completely outside the image bounds
+                            if clipped_window is not None:
+                                data = np.full(
+                                    (clipped_window.height, clipped_window.width),
+                                    self.model.cfg.default_output_value,
+                                    dtype=np.uint8,
+                                )
+                                dst.write(data, 1, window=clipped_window)
 
-                                # Remove from batch
-                                window_batch_list = list(window_batch)
-                                window_batch_list.pop(i)
-                                window_batch = tuple(window_batch_list)
-                                input_batch = np.delete(input_batch, i, axis=0)
+                        # Remove blank tiles from batch
+                        window_batch = tuple(w for w, b in zip(window_batch, blank) if not b)
+                        input_batch = input_batch[~blank]
 
                         # If all windows were removed, skip processing and update progress
                         if len(window_batch) == 0:
