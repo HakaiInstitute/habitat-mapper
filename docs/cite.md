@@ -34,8 +34,25 @@ acknowledge the contributors below.
 |----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | `kelp-rgb`, `kelp-rgbi`                | Acknowledge The Nature Conservancy of California for training imagery.                                                          |
 | `kelp-ps8b`                            | Cavanaugh, K.C. *et al.* High-resolution planet Dove data identify local drivers of kelp canopy persistence. *Commun Earth Environ* (2026). [doi:10.1038/s43247-025-03134-y](https://doi.org/10.1038/s43247-025-03134-y) |
-| `kelp-skema`                           | Acknowledge Dr. Mohsen Ghanbari *et al.*, Spectral Lab, and the original [SKeMa code](https://github.com/m5ghanba/skema/).    |
+| `kelp-skema`                           | Ghanbari, M. *et al.* Deep Learning-Based Mapping of Floating Kelp Forests from Sentinel-2 Imagery. *Remote Sensing* 18(20), 3604 (2026). [doi:10.3390/rs18203604](https://doi.org/10.3390/rs18203604) |
 | `mussel-rgb`, `mussel-gooseneck-rgb`   | Software citation above.                                                                                                        |
 | `eelgrass-rgb`                         | Software citation above.                                                                                                        |
+
+??? example "BibTeX for `kelp-skema`"
+
+    ```bibtex
+    @article{Ghanbari_2026_SKeMa,
+      author = {Ghanbari, Mohsen and Ernst, Neil and Denouden, Taylor A. and Reshitnyk, Luba Y. and
+                Steffen, Piper and Wachmann, Alena and Mora-Soto, Alejandra and Loos, Eduardo and
+                Hessing-Lewis, Margot and Dedeluk, Nic and Costa, Maycira},
+      title = {Deep Learning-Based Mapping of Floating Kelp Forests from Sentinel-2 Imagery},
+      journal = {Remote Sensing},
+      volume = {18},
+      number = {20},
+      pages = {3604},
+      year = {2026},
+      doi = {10.3390/rs18203604}
+    }
+    ```
 
 See [Credits](credits.md) for everyone who contributed.

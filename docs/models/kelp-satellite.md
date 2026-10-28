@@ -81,11 +81,18 @@ U-Net with a MaxViT-Tiny encoder.
 ### Performance and training data
 
 !!! note "Coming soon"
-    Performance metrics and training data details for SKeMa will be added here.
+    Performance metrics and training data details for SKeMa will be added here. In the meantime, the model's
+    development and evaluation are described in
+    [Ghanbari *et al.* (2026)](https://doi.org/10.3390/rs18203604).
 
 ### Credit
 
 !!! quote "Who to credit"
     Developed by **Dr. Mohsen Ghanbari _et al._** at [Spectral Lab](https://uvicspectral.com/), University of
     Victoria, and integrated into Habitat-Mapper from the original code at
-    [github.com/m5ghanba/skema](https://github.com/m5ghanba/skema/).
+    [github.com/m5ghanba/skema](https://github.com/m5ghanba/skema/). If you use `kelp-skema` in your research,
+    please cite:
+
+    Ghanbari, M., Ernst, N., Denouden, T.A., Reshitnyk, L.Y., Steffen, P., Wachmann, A., Mora-Soto, A., Loos, E.,
+    Hessing-Lewis, M., Dedeluk, N., & Costa, M. Deep Learning-Based Mapping of Floating Kelp Forests from Sentinel-2
+    Imagery. *Remote Sensing* 18(20), 3604 (2026). [https://doi.org/10.3390/rs18203604](https://doi.org/10.3390/rs18203604)
