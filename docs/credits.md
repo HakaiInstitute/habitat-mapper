@@ -36,7 +36,7 @@ project. See [How to Cite](cite.md#the-models) for the associated paper.
 ### Dr. Mohsen Ghanbari
 
 [Dr. Mohsen Ghanbari](https://scholar.google.com/citations?user=9wytH0kAAAAJ&hl=en) *et al.* developed the
-[`kelp-skema`](models/kelp-satellite.md#kelp-skema-beta) models as part of a postdoctoral project at
+[`kelp-skema`](models/kelp-satellite.md#kelp-skema) models as part of a postdoctoral project at
 [Spectral Lab](https://uvicspectral.com/). The models were integrated into Habitat-Mapper from the original code at
 [github.com/m5ghanba/skema](https://github.com/m5ghanba/skema/). The work is described in
 [Ghanbari *et al.* (2026)](https://doi.org/10.3390/rs18203604). See [How to Cite](cite.md#the-models).
