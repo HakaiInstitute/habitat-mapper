@@ -8,6 +8,7 @@ import io
 import os
 import site
 import sys
+import tempfile
 import warnings
 from dataclasses import dataclass, field
 from functools import cache
@@ -26,7 +27,7 @@ with warnings.catch_warnings():
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidProtobuf, NoSuchFile
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Generator, Sequence
 
 # 4=FATAL. Errors are raised as exceptions and reported through loguru, so ORT's own error log is redundant
 ort.set_default_logger_severity(4)
@@ -78,12 +79,117 @@ class Accelerator:
         """
         sess_options = ort.SessionOptions()
         sess_options.log_severity_level = 4
+        # ORT's own fallback quietly rebuilds a failed session on the CPU. create_session falls back instead, so that
+        # the device that is actually used gets reported
+        kwargs: dict[str, Any] = {"sess_options": sess_options, "enable_fallback": 0}
         if self.ep_devices:
             sess_options.add_provider_for_devices(list(self.ep_devices), self.options)
-            return {"sess_options": sess_options}
-        if self.ep_name == _CPU_EP:
-            return {"sess_options": sess_options, "providers": [_CPU_EP]}
-        return {"sess_options": sess_options, "providers": [(self.ep_name, self.options), _CPU_EP]}
+        elif self.ep_name == _CPU_EP:
+            kwargs["providers"] = [_CPU_EP]
+        else:
+            kwargs["providers"] = [(self.ep_name, self.options), _CPU_EP]
+        return kwargs
+
+
+@contextlib.contextmanager
+def _capture_native_stderr(source: str) -> Generator[None]:
+    """Capture what native libraries write straight to stderr and log it at debug level.
+
+    Dawn (used by the WebGPU plugin) and the Vulkan loader print warnings to stderr that users can't act on. Don't log
+    inside this block: a loguru sink that writes to stderr would be captured too.
+
+    Args:
+        source: What is running, for the debug message.
+    """
+    sys.stderr.flush()
+    saved_fd = os.dup(2)
+    with tempfile.TemporaryFile() as captured:
+        os.dup2(captured.fileno(), 2)
+        try:
+            yield
+        finally:
+            sys.stderr.flush()
+            os.dup2(saved_fd, 2)
+            os.close(saved_fd)
+            captured.seek(0)
+            output = captured.read().decode(errors="replace").strip()
+            if output:
+                logger.debug(f"Output from {source}:\n{output}")
+
+
+class _VkInstanceCreateInfo(ctypes.Structure):
+    _fields_ = (
+        ("sType", ctypes.c_uint32),
+        ("pNext", ctypes.c_void_p),
+        ("flags", ctypes.c_uint32),
+        ("pApplicationInfo", ctypes.c_void_p),
+        ("enabledLayerCount", ctypes.c_uint32),
+        ("ppEnabledLayerNames", ctypes.c_void_p),
+        ("enabledExtensionCount", ctypes.c_uint32),
+        ("ppEnabledExtensionNames", ctypes.c_void_p),
+    )
+
+
+_VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO = 1
+_VK_PHYSICAL_DEVICE_TYPE_CPU = 4
+
+
+def _vulkan_device_types() -> list[int]:
+    """List the VkPhysicalDeviceType of every Vulkan device.
+
+    Returns:
+        Device types, or an empty list if Vulkan isn't installed or has no devices.
+    """
+    try:
+        vulkan = ctypes.CDLL("libvulkan.so.1")
+    except OSError:
+        return []
+    vulkan.vkCreateInstance.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+    vulkan.vkCreateInstance.restype = ctypes.c_int32
+    vulkan.vkEnumeratePhysicalDevices.argtypes = (ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)
+    vulkan.vkEnumeratePhysicalDevices.restype = ctypes.c_int32
+    vulkan.vkGetPhysicalDeviceProperties.argtypes = (ctypes.c_void_p, ctypes.c_void_p)
+    vulkan.vkGetPhysicalDeviceProperties.restype = None
+    vulkan.vkDestroyInstance.argtypes = (ctypes.c_void_p, ctypes.c_void_p)
+    vulkan.vkDestroyInstance.restype = None
+
+    instance = ctypes.c_void_p()
+    create_info = _VkInstanceCreateInfo(sType=_VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO)
+    if vulkan.vkCreateInstance(ctypes.byref(create_info), None, ctypes.byref(instance)) != 0:
+        return []
+    try:
+        count = ctypes.c_uint32()
+        if vulkan.vkEnumeratePhysicalDevices(instance, ctypes.byref(count), None) != 0:
+            return []
+        devices = (ctypes.c_void_p * count.value)()
+        if vulkan.vkEnumeratePhysicalDevices(instance, ctypes.byref(count), devices) != 0:
+            return []
+        types = []
+        for device in devices[: count.value]:
+            # VkPhysicalDeviceProperties is 824 bytes and deviceType is its fifth uint32
+            properties = (ctypes.c_uint32 * 256)()
+            vulkan.vkGetPhysicalDeviceProperties(device, properties)
+            types.append(properties[4])
+        return types
+    finally:
+        vulkan.vkDestroyInstance(instance, None)
+
+
+def has_hardware_gpu_for_webgpu() -> bool:
+    """Check whether WebGPU would run on a hardware GPU rather than a software renderer.
+
+    On Linux, WebGPU runs on Vulkan. ONNX Runtime reports the GPU it finds on the PCI bus even when its Vulkan driver is
+    missing, in which case WebGPU either fails or runs on a software renderer (llvmpipe) that is slower than the CPU.
+    Other platforms aren't checked.
+
+    Returns:
+        True if WebGPU should run on a hardware GPU.
+    """
+    if sys.platform != "linux":
+        return True
+    with _capture_native_stderr("the Vulkan loader"):
+        types = _vulkan_device_types()
+    return any(t != _VK_PHYSICAL_DEVICE_TYPE_CPU for t in types)
 
 
 def has_nvidia_driver() -> bool:
@@ -177,7 +283,8 @@ def _register_webgpu() -> str | None:
 
     ep_name: str = onnxruntime_ep_webgpu.get_ep_name()
     try:
-        ort.register_execution_provider_library(ep_name, onnxruntime_ep_webgpu.get_library_path())
+        with _capture_native_stderr("the WebGPU plugin"):
+            ort.register_execution_provider_library(ep_name, onnxruntime_ep_webgpu.get_library_path())
     except Exception as e:  # noqa: BLE001
         if "already registered" not in str(e).lower():
             logger.warning(f"The WebGPU plugin is installed but could not be loaded: {e}")
@@ -211,7 +318,9 @@ def find_accelerators() -> tuple[Accelerator, ...]:
     webgpu_ep = _register_webgpu()
 
     ep_devices: dict[str, list[Any]] = {}
-    for ep_device in ort.get_ep_devices():
+    with _capture_native_stderr("ONNX Runtime device discovery"):
+        all_ep_devices = ort.get_ep_devices()
+    for ep_device in all_ep_devices:
         ep_devices.setdefault(ep_device.ep_name, []).append(ep_device)
     available = ort.get_available_providers()
 
@@ -226,7 +335,14 @@ def find_accelerators() -> tuple[Accelerator, ...]:
                 found.append(Accelerator("cuda", ep, "NVIDIA GPU"))
 
     if webgpu_ep and webgpu_ep in ep_devices:
-        found.append(Accelerator("webgpu", webgpu_ep, _describe(ep_devices[webgpu_ep]), tuple(ep_devices[webgpu_ep])))
+        if has_hardware_gpu_for_webgpu():
+            webgpu_devices = tuple(ep_devices[webgpu_ep])
+            found.append(Accelerator("webgpu", webgpu_ep, _describe(webgpu_devices), webgpu_devices))
+        else:
+            logger.warning(
+                "The WebGPU plugin is installed, but no Vulkan driver for your GPU was found, so it won't be used. "
+                "Install your GPU vendor's Vulkan driver to enable it."
+            )
 
     if nvidia and not found:
         logger.warning(f"An NVIDIA GPU was found but can't be used. {_UNAVAILABLE_HINTS['cuda']}")
@@ -295,18 +411,22 @@ def create_session(model_path: str | Path, device: str | None = None) -> ort.Inf
     *accelerators, cpu = select_accelerators(device)
     for accelerator in accelerators:
         try:
-            session = ort.InferenceSession(str(model_path), **accelerator.session_kwargs())
+            with _capture_native_stderr(accelerator.ep_name):
+                session = ort.InferenceSession(str(model_path), **accelerator.session_kwargs())
         except (InvalidProtobuf, NoSuchFile):
             raise
         except Exception as e:  # noqa: BLE001
-            logger.warning(
-                f"Could not run the model on {accelerator.device} ({accelerator.hardware}). Trying the next device."
-            )
-            logger.debug(f"{accelerator.ep_name} failed: {e}")
-            continue
+            failure = str(e)
+        else:
+            if session.get_providers()[0] == accelerator.ep_name:
+                logger.info(f"Running on {accelerator.device} ({accelerator.hardware})")
+                return session
+            failure = f"ONNX Runtime used {session.get_providers()} instead"
 
-        logger.info(f"Running on {accelerator.device} ({accelerator.hardware})")
-        return session
+        logger.warning(
+            f"Could not run the model on {accelerator.device} ({accelerator.hardware}). Trying the next device."
+        )
+        logger.debug(f"{accelerator.ep_name} failed: {failure}")
 
     session = ort.InferenceSession(str(model_path), **cpu.session_kwargs())
     logger.info(f"Running on cpu ({cpu.hardware})")

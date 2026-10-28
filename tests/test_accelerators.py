@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess  # noqa: S404
 import sys
 from types import SimpleNamespace
@@ -38,6 +39,7 @@ def machine(monkeypatch: pytest.MonkeyPatch) -> Iterator[Machine]:
         nvidia: bool = False,
         cudnn: bool = True,
         webgpu: bool = False,
+        hardware_gpu: bool = True,
     ) -> list[bool]:
         devices = [_ep_device("CPUExecutionProvider", "Acme", "CPU"), *ep_devices]
         monkeypatch.setattr(accelerators.ort, "get_ep_devices", lambda: devices)
@@ -46,6 +48,7 @@ def machine(monkeypatch: pytest.MonkeyPatch) -> Iterator[Machine]:
         monkeypatch.setattr(accelerators, "has_cudnn", lambda: cudnn)
         monkeypatch.setattr(accelerators, "_load_cuda_libraries", lambda: cuda_loaded.append(True))
         monkeypatch.setattr(accelerators, "_register_webgpu", lambda: "WebGpuExecutionProvider" if webgpu else None)
+        monkeypatch.setattr(accelerators, "has_hardware_gpu_for_webgpu", lambda: hardware_gpu)
         return cuda_loaded
 
     monkeypatch.delenv(accelerators.DEVICE_ENV_VAR, raising=False)
@@ -168,24 +171,99 @@ def test_unknown_device_is_rejected(machine: Machine) -> None:
         select_accelerators("tpu")
 
 
-def test_failed_accelerator_falls_back_to_cpu(machine: Machine, monkeypatch: pytest.MonkeyPatch) -> None:
-    machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "AMD", "GPU"),), webgpu=True)
-    created = []
+class _FakeSession:
+    def __init__(self, providers: list[str]) -> None:
+        self.providers = providers
 
-    def fake_session(path: str, **kwargs: object) -> str:
-        if "providers" not in kwargs:
-            raise RuntimeError("WebGPU device lost\nmore detail")
-        created.append(kwargs["providers"])
-        return "session"
-
-    monkeypatch.setattr(accelerators.ort, "InferenceSession", fake_session)
-    monkeypatch.setattr(accelerators.Accelerator, "session_kwargs", _fake_session_kwargs)
-    assert accelerators.create_session("model.onnx") == "session"
-    assert created == [["CPUExecutionProvider"]]
+    def get_providers(self) -> list[str]:
+        return self.providers
 
 
 def _fake_session_kwargs(self: accelerators.Accelerator) -> dict[str, object]:
-    return {"providers": [self.ep_name]} if self.device == "cpu" else {"sess_options": None}
+    return {"providers": [self.ep_name]}
+
+
+def test_failed_accelerator_falls_back_to_cpu(machine: Machine, monkeypatch: pytest.MonkeyPatch) -> None:
+    machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "AMD", "GPU"),), webgpu=True)
+
+    def fake_session(path: str, providers: list[str]) -> _FakeSession:
+        if providers != ["CPUExecutionProvider"]:
+            raise RuntimeError("WebGPU device lost")
+        return _FakeSession(providers)
+
+    monkeypatch.setattr(accelerators.ort, "InferenceSession", fake_session)
+    monkeypatch.setattr(accelerators.Accelerator, "session_kwargs", _fake_session_kwargs)
+    assert accelerators.create_session("model.onnx").get_providers() == ["CPUExecutionProvider"]
+
+
+def test_session_that_silently_lands_on_cpu_counts_as_a_failure(
+    machine: Machine, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # E.g. WebGPU without a Vulkan driver, where ONNX Runtime used to fall back to the CPU internally
+    machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "AMD", "GPU"),), webgpu=True)
+    created = []
+
+    def fake_session(path: str, providers: list[str]) -> _FakeSession:
+        created.append(providers)
+        return _FakeSession(["CPUExecutionProvider"])
+
+    monkeypatch.setattr(accelerators.ort, "InferenceSession", fake_session)
+    monkeypatch.setattr(accelerators.Accelerator, "session_kwargs", _fake_session_kwargs)
+    from loguru import logger  # noqa: PLC0415
+
+    handler = logger.add(sys.stderr, level="WARNING")
+    try:
+        accelerators.create_session("model.onnx")
+    finally:
+        logger.remove(handler)
+    assert created == [["WebGpuExecutionProvider"], ["CPUExecutionProvider"]]
+    assert "Could not run the model on webgpu" in capsys.readouterr().err
+
+
+def test_accelerator_sessions_disable_ort_internal_fallback(machine: Machine) -> None:
+    machine(available=("CUDAExecutionProvider", "CPUExecutionProvider"), nvidia=True)
+    assert _devices(list(find_accelerators())) == ["cuda", "cpu"]
+    for accelerator in find_accelerators():
+        assert accelerator.session_kwargs()["enable_fallback"] == 0
+
+
+def test_webgpu_on_a_software_renderer_is_skipped(machine: Machine, capsys: pytest.CaptureFixture[str]) -> None:
+    from loguru import logger  # noqa: PLC0415
+
+    handler = logger.add(sys.stderr, level="WARNING")
+    try:
+        machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),), webgpu=True, hardware_gpu=False)
+        assert _devices(select_accelerators()) == ["cpu"]
+    finally:
+        logger.remove(handler)
+    assert "no Vulkan driver for your GPU" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("types", "expected"),
+    [([], False), ([accelerators._VK_PHYSICAL_DEVICE_TYPE_CPU], False), ([4, 2], True), ([1], True)],
+)
+def test_hardware_gpu_check_ignores_software_vulkan_devices(
+    monkeypatch: pytest.MonkeyPatch, types: list[int], expected: bool
+) -> None:
+    monkeypatch.setattr(accelerators.sys, "platform", "linux")
+    monkeypatch.setattr(accelerators, "_vulkan_device_types", lambda: types)
+    assert accelerators.has_hardware_gpu_for_webgpu() is expected
+
+
+def test_native_stderr_is_logged_at_debug_level(capfd: pytest.CaptureFixture[str]) -> None:
+    from loguru import logger  # noqa: PLC0415
+
+    messages: list[str] = []
+    handler = logger.add(messages.append, level="DEBUG", format="{level} {message}")
+    try:
+        with accelerators._capture_native_stderr("a test library"):
+            os.write(2, b"Warning: maxDynamicUniformBuffersPerPipelineLayout artificially reduced\n")
+    finally:
+        logger.remove(handler)
+    assert "maxDynamic" not in capfd.readouterr().err
+    assert len(messages) == 1
+    assert messages[0].startswith("DEBUG Output from a test library:")
 
 
 def test_importing_model_does_not_load_cuda() -> None:
