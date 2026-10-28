@@ -3,7 +3,7 @@
   "revision": "20261014",
   "description": "Kelp segmentation model for Sentinel 2 L2A data.",
   "dependencies": [
-    "https://huggingface.co/HakaiInstitute/kelp-skema/resolve/refs%2Fpr%2F6/Unet_tu-maxvit_tiny_tf_512_20261014.onnx"
+    "https://huggingface.co/HakaiInstitute/kelp-skema/resolve/20261014/Unet_tu-maxvit_tiny_tf_512_20261014.onnx"
   ],
   "model_filename": "Unet_tu-maxvit_tiny_tf_512_20261014.onnx",
   "normalization": null,
