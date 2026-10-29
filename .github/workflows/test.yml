@@ -53,7 +53,7 @@ jobs:
         run: uv run pytest
 
   Oldest-ONNX-Runtime:
-    # The [cuda12] extra holds onnxruntime-gpu at 1.24.4-1.26, so the code must keep working on 1.24.4
+    # pyproject.toml allows these minimum versions, so the code must keep working on them as newer ones come out
     name: test oldest ONNX Runtime
     runs-on: ubuntu-latest
     permissions:
@@ -80,7 +80,7 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --dev
-          uv pip install "onnxruntime-gpu==1.24.4"
+          uv pip install "onnxruntime-gpu==1.31.1" "onnxruntime-ep-webgpu==0.4.0"
 
       - name: Run tests
         run: uv run --no-sync pytest

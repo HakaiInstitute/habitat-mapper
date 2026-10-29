@@ -235,7 +235,10 @@ class ONNXModel:
                 provider = session.get_providers()[0]
                 if self.__ort_sess_has_run or provider == "CPUExecutionProvider":
                     raise
-                logger.warning(f"The model failed to run on {describe_provider(provider)}. Trying the next device.")
+                logger.warning(
+                    f"The model failed to run on {describe_provider(provider)}. Trying the next device. "
+                    "Set DEBUG=1 to see why."
+                )
                 logger.debug(f"{provider} failed: {e}")
                 self.__failed_providers.add(provider)
                 self.__ort_sess = None

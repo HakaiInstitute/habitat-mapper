@@ -22,7 +22,16 @@ with warnings.catch_warnings():
     # onnxruntime-gpu registers its CUDA provider on import and warns when the CUDA libraries can't be loaded.
     # That's expected without an NVIDIA GPU, so CUDA support is checked explicitly in find_accelerators instead.
     warnings.filterwarnings("ignore", message="Failed to register bundled CUDA plugin EP")
-    import onnxruntime as ort
+    try:
+        import onnxruntime as ort
+    except ImportError as e:
+        # ONNX Runtime needs the Visual C++ runtime, which a fresh Windows install doesn't have
+        if sys.platform == "win32" and "DLL load failed" in str(e):
+            raise ImportError(
+                "ONNX Runtime could not be loaded. Install the Microsoft Visual C++ Redistributable from "
+                "https://aka.ms/vs/17/release/vc_redist.x64.exe and try again."
+            ) from e
+        raise
 
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidProtobuf, NoSuchFile
 
@@ -46,14 +55,13 @@ _EXCLUDED_FROM_AUTO = {"coreml"}
 # PCI vendor IDs, for devices that ONNX Runtime reports without a vendor name
 _VENDOR_NAMES = {0x10DE: "NVIDIA", 0x1002: "AMD", 0x1022: "AMD", 0x8086: "Intel", 0x106B: "Apple", 0x5143: "Qualcomm"}
 
-# The [cuda] extra installs CUDA 13, which needs NVIDIA driver R580 or newer. [cuda12] is for older drivers
-_CUDA_INSTALL = {13: "`pip install 'habitat-mapper[cuda]'`", 12: "`pip install 'habitat-mapper[cuda12]'`"}
+# The [cuda] extra installs CUDA 13, which needs NVIDIA driver R580 or newer
+_CUDA_INSTALL = "`pip install 'habitat-mapper[cuda]'`"
 
 _UNAVAILABLE_HINTS = {
     "cuda": (
-        "It needs an NVIDIA GPU and the CUDA libraries, which are available on Windows and Linux. "
-        f"Install them with {_CUDA_INSTALL[13]} for NVIDIA driver R580 or newer, "
-        f"or {_CUDA_INSTALL[12]} for older drivers."
+        "It needs an RTX 20 series or newer NVIDIA GPU, driver R580 or newer, and the CUDA libraries, which are "
+        f"available on Windows and Linux. Install them with {_CUDA_INSTALL}."
     ),
     "coreml": "CoreML is only available on macOS.",
     "webgpu": "It needs a GPU with a DirectX 12 (Windows), Vulkan (Linux) or Metal (macOS) driver.",
@@ -218,6 +226,8 @@ _IID_IDXGIFACTORY1 = _Guid(
     0x770AAE78, 0xF26F, 0x4DBA, (ctypes.c_uint8 * 8)(0xA8, 0x29, 0x25, 0x3C, 0x83, 0xD1, 0xB3, 0x87)
 )
 _DXGI_ADAPTER_FLAG_SOFTWARE = 2
+# The Microsoft Basic Render Driver (WARP). Windows Sandbox lists it more than once, not always with the software flag
+_WARP_IDS = (0x1414, 0x8C)
 # Vtable slots. IUnknown: Release=2. IDXGIFactory1: EnumAdapters1=12. IDXGIAdapter1: GetDesc1=10
 _RELEASE, _ENUM_ADAPTERS1, _GET_DESC1 = 2, 12, 10
 _MAX_ADAPTERS = 64
@@ -313,7 +323,7 @@ def has_hardware_gpu_for_webgpu(webgpu_devices: Sequence[Any]) -> bool:
         adapters = _dxgi_adapters()
         if not adapters:
             return True  # DXGI couldn't be queried, which doesn't mean the GPU is unusable
-        hardware = {(vendor, device) for vendor, device, software in adapters if not software}
+        hardware = {(vendor, device) for vendor, device, software in adapters if not software} - {_WARP_IDS}
         return any((d.device.vendor_id, d.device.device_id) in hardware for d in webgpu_devices)
     return True
 
@@ -387,7 +397,7 @@ def has_cudnn() -> bool:
 
 
 def _cudnn_packages() -> set[str]:
-    """List the cuDNN packages installed from PyPI, e.g. nvidia-cudnn-cu12 from the [cuda12] extra.
+    """List the cuDNN packages installed from PyPI, e.g. nvidia-cudnn-cu13 from the [cuda] extra.
 
     Returns:
         The normalized package names.
@@ -397,7 +407,7 @@ def _cudnn_packages() -> set[str]:
 
 
 def _cuda_libraries_installed() -> bool:
-    """Check whether cuDNN is installed, from the [cuda] or [cuda12] extra or a system install, without loading CUDA.
+    """Check whether cuDNN is installed, from the [cuda] extra or a system install, without loading CUDA.
 
     Returns:
         True if cuDNN is installed.
@@ -406,7 +416,7 @@ def _cuda_libraries_installed() -> bool:
 
 
 def _add_cudnn_to_path() -> None:
-    """On Windows, put the cuDNN folder from the [cuda] or [cuda12] extra on PATH.
+    """On Windows, put the cuDNN folder from the [cuda] extra on PATH.
 
     cuDNN loads its sub-libraries by name the first time it needs them, and on Windows only finds them through PATH.
     ONNX Runtime preloads a fixed list of them, which can miss ones added in newer cuDNN releases, e.g.
@@ -460,6 +470,29 @@ def _register_webgpu() -> str | None:
     return ep_name
 
 
+def _preferred_webgpu_device(webgpu_devices: Sequence[Any]) -> Any:  # noqa: ANN401
+    """Choose the GPU for WebGPU. The plugin rejects more than one device, e.g. both GPUs of a laptop.
+
+    Prefers a discrete GPU, then the one Windows ranks as highest performance. ORT reports both only on Windows.
+
+    Args:
+        webgpu_devices: The WebGPU GPU devices reported by ort.get_ep_devices().
+
+    Returns:
+        The device to run on.
+    """
+
+    def rank(device: Any) -> tuple[bool, int]:  # noqa: ANN401
+        metadata = getattr(device.device, "metadata", None) or {}
+        performance_index = metadata.get("DxgiHighPerformanceIndex", "")
+        return (
+            metadata.get("Discrete") != "1",
+            int(performance_index) if performance_index.isdigit() else _MAX_ADAPTERS,
+        )
+
+    return min(webgpu_devices, key=rank)
+
+
 def _describe(ep_devices: Sequence[Any]) -> str:
     """Describe the hardware behind a list of ONNX Runtime EP devices.
 
@@ -481,7 +514,7 @@ def _explain_unused_nvidia_gpu(
     cudnn: bool,
     other_gpu_found: bool,
 ) -> tuple[str, str, str]:
-    """Explain why CUDA isn't used on an NVIDIA GPU, and what to install. CUDA is the fastest option there.
+    """Explain why CUDA isn't used on an NVIDIA GPU, and what to do about it. CUDA is the fastest option there.
 
     Args:
         driver_cuda: Newest CUDA major version the NVIDIA driver supports.
@@ -493,30 +526,37 @@ def _explain_unused_nvidia_gpu(
     Returns:
         The log level, the message to log, and the reason to give if CUDA is requested with --device.
     """
-    if driver_cuda < 12:
-        message = "An NVIDIA GPU was found, but its driver is too old for CUDA. Update the driver to use CUDA."
-        return ("DEBUG" if other_gpu_found else "WARNING"), message, message
-
-    old_gpu = compute_capability is not None and compute_capability < _CUDA13_MIN_COMPUTE_CAPABILITY
-    install = _CUDA_INSTALL[12 if driver_cuda == 12 or old_gpu else 13]
-    if cudnn and old_gpu and ort_cuda >= 13 and compute_capability is not None:
+    if compute_capability is not None and compute_capability < _CUDA13_MIN_COMPUTE_CAPABILITY:
+        # Nothing to install: WebGPU or the CPU is used instead
         major, minor = compute_capability
-        message = (
-            f"The installed CUDA libraries need CUDA {ort_cuda}, which doesn't support your NVIDIA GPU (compute "
-            f"capability {major}.{minor}, older than the RTX 20 series). Switch to the CUDA 12 libraries with "
-            f"{install}."
+        reason = (
+            f"CUDA doesn't support your NVIDIA GPU (compute capability {major}.{minor}, older than the RTX 20 series)."
         )
-        return "WARNING", message, message
-    if cudnn and driver_cuda < ort_cuda:
-        message = (
-            f"The installed CUDA libraries need CUDA {ort_cuda}, but your NVIDIA driver only supports CUDA "
-            f"{driver_cuda}. Update the driver to R580 or newer, or switch to the CUDA {driver_cuda} libraries with "
-            f"{install}."
+        if cudnn:
+            return "WARNING", f"{reason[:-1]}, so the CUDA libraries installed with `[cuda]` aren't used.", reason
+        return "DEBUG", reason, reason
+
+    if driver_cuda < max(ort_cuda, 13):
+        if cudnn:
+            message = (
+                f"The installed CUDA libraries need CUDA {max(ort_cuda, 13)}, but your NVIDIA driver only supports "
+                f"CUDA {driver_cuda}. Update the driver to R580 or newer to use CUDA."
+            )
+            return "WARNING", message, message
+        reason = (
+            f"Update the NVIDIA driver to R580 or newer and install the CUDA libraries with {_CUDA_INSTALL} to use it."
         )
-        return "WARNING", message, message
-    reason = f"Install the CUDA libraries with {install} to use it."
+        if other_gpu_found:
+            message = (
+                f"Update the NVIDIA driver to R580 or newer and install the CUDA libraries with {_CUDA_INSTALL} for "
+                "faster processing on NVIDIA GPUs."
+            )
+            return "INFO", message, reason
+        return "WARNING", f"An NVIDIA GPU was found, but its driver is too old for CUDA. {reason}", reason
+
+    reason = f"Install the CUDA libraries with {_CUDA_INSTALL} to use it."
     if other_gpu_found:
-        return "INFO", f"Install the CUDA libraries with {install} for faster processing on NVIDIA GPUs.", reason
+        return "INFO", f"Install the CUDA libraries with {_CUDA_INSTALL} for faster processing on NVIDIA GPUs.", reason
     return "WARNING", f"An NVIDIA GPU was found but can't be used. {reason}", reason
 
 
@@ -537,16 +577,15 @@ def find_accelerators() -> tuple[Accelerator, ...]:
     ort_cuda = int(ort_cuda_version.split(".")[0]) if (ort_cuda_version := getattr(ort, "cuda_version", "")) else 0
     compute_capability = nvidia_compute_capability() if nvidia and ort_cuda >= 13 else None
     old_gpu = compute_capability is not None and compute_capability < _CUDA13_MIN_COMPUTE_CAPABILITY
-    # The newest CUDA version both the driver and the GPU support
+    # The newest CUDA version both the driver and the GPU support. CUDA 13 dropped GPUs older than Turing
     supported_cuda = min(driver_cuda, 12) if driver_cuda is not None and old_gpu else driver_cuda
     driver_too_old = supported_cuda is not None and supported_cuda < ort_cuda
     if nvidia and len(cudnn_packages := _cudnn_packages()) > 1:
-        # E.g. after upgrading in place from [cuda] to [cuda12]. The packages share a folder, and cuDNN rejects a
-        # library left behind by the other version, so CUDA fails on the first batch
+        # E.g. after upgrading in place from 0.16.2 or older, which installed CUDA 12. The packages share a folder,
+        # and cuDNN rejects a library left behind by the other version, so CUDA fails on the first batch
         logger.warning(
             f"CUDA libraries for more than one CUDA version are installed ({', '.join(sorted(cudnn_packages))}), "
-            "which stops CUDA from working. Create a new environment and install only one of "
-            f"{_CUDA_INSTALL[13]} or {_CUDA_INSTALL[12]}."
+            f"which stops CUDA from working. Create a new environment and install {_CUDA_INSTALL} again."
         )
     if nvidia and not driver_too_old:
         _load_cuda_libraries()
@@ -577,24 +616,27 @@ def find_accelerators() -> tuple[Accelerator, ...]:
     webgpu_devices = tuple(d for d in ep_devices.get(webgpu_ep or "", []) if d.device.type.name == "GPU")
     if webgpu_ep and webgpu_devices:
         if has_hardware_gpu_for_webgpu(webgpu_devices):
-            found.append(Accelerator("webgpu", webgpu_ep, _describe(webgpu_devices), webgpu_devices))
+            webgpu_device = _preferred_webgpu_device(webgpu_devices)
+            found.append(Accelerator("webgpu", webgpu_ep, _describe([webgpu_device]), (webgpu_device,)))
         else:
             webgpu_without_driver = True
 
+    cuda_warned = False
     if driver_cuda is not None and not cuda_found:
         level, message, reason = _explain_unused_nvidia_gpu(
             driver_cuda, ort_cuda, compute_capability, cudnn=_cuda_libraries_installed(), other_gpu_found=bool(found)
         )
         logger.log(level, message)
         _unavailable_reasons["cuda"] = reason
+        cuda_warned = level == "WARNING"
     if webgpu_without_driver:
         message = (
             "A GPU was found, but its graphics driver isn't installed, so WebGPU can't use it. Install your GPU "
             "vendor's driver (on Linux, including its Vulkan driver)."
         )
         _unavailable_reasons["webgpu"] = message
-        # NVIDIA users were already told to install CUDA, their fastest option
-        if not found and "cuda" not in _unavailable_reasons:
+        # NVIDIA users were already told how to get CUDA working, their fastest option
+        if not found and not cuda_warned:
             logger.warning(message)
 
     if _COREML_EP in ep_devices:
@@ -693,7 +735,8 @@ def create_session(
             failure = f"ONNX Runtime used {session.get_providers()} instead"
 
         logger.warning(
-            f"Could not run the model on {accelerator.device} ({accelerator.hardware}). Trying the next device."
+            f"Could not run the model on {accelerator.device} ({accelerator.hardware}). Trying the next device. "
+            "Set DEBUG=1 to see why."
         )
         logger.debug(f"{accelerator.ep_name} failed: {failure}")
 

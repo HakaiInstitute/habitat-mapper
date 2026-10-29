@@ -8,12 +8,13 @@
 | *running scripts is disabled on this system* (Windows)      | Run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` once, then activate again. |
 | GDAL errors during installation (Windows)                   | The environment is on a network or secondary drive. [Recreate it on `C:`](#i-get-gdal-errors-during-installation). |
 | `CUDA out of memory` or the program crashes on large images | Lower `--crop-size` (e.g. `512`) or `--batch-size`. See [Tune Processing](../guides/tune-processing.md). |
-| *An NVIDIA GPU was found but can't be used*                 | Install the CUDA libraries with the extra the message names, `[cuda]` or `[cuda12]`. See [GPU acceleration](../guides/install-advanced.md#gpu-acceleration). |
-| *The installed CUDA libraries need CUDA 13, but your NVIDIA driver only supports CUDA 12* | Update the NVIDIA driver to R580 or newer, or switch to `pip install "habitat-mapper[cuda12]"`. |
-| *CUDA libraries for more than one CUDA version are installed* | Usually left over from upgrading in place. Delete the environment and create a new one with only `[cuda]` or `[cuda12]`. See [Upgrade to 0.17](../guides/upgrade-to-0-17.md). |
-| *The installed CUDA libraries need CUDA 13, which doesn't support your NVIDIA GPU* | Your GPU is older than the RTX 20 series. Switch to `pip install "habitat-mapper[cuda12]"` in a new environment. |
+| *DLL load failed while importing onnxruntime_pybind11_state* / *ONNX Runtime could not be loaded* (Windows) | Install the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) and try again. |
+| *An NVIDIA GPU was found but can't be used*                 | Install the CUDA libraries with `pip install "habitat-mapper[cuda]"`. See [GPU acceleration](../guides/install-advanced.md#gpu-acceleration). |
+| *The installed CUDA libraries need CUDA 13, but your NVIDIA driver only supports CUDA 12* / *its driver is too old for CUDA* | Update the NVIDIA driver to R580 or newer. Until then, WebGPU or the CPU is used. |
+| *CUDA libraries for more than one CUDA version are installed* | Usually left over from upgrading in place. Delete the environment and create a new one with `[cuda]`. See [Upgrade to 0.17](../guides/upgrade-to-0-17.md). |
+| *CUDA doesn't support your NVIDIA GPU* | Your GPU is older than the RTX 20 series. It runs on WebGPU instead. You can create a new environment without `[cuda]` to save about 2 GB. |
 | *A GPU was found, but its graphics driver isn't installed*  | Install your GPU vendor's driver. On Linux, also its Vulkan driver, e.g. `mesa-vulkan-drivers` for AMD and Intel GPUs. |
-| *Could not run the model on …* / *The model failed to run on …* | That device couldn't run this model, so the next one was used, ending with the CPU. Results are the same, just slower. Run with `DEBUG=1` to see why. |
+| *Could not run the model on …* / *The model failed to run on …* | That device couldn't run this model, so the next one was used, ending with the CPU. Results are the same, just slower. Set the `DEBUG` environment variable to `1` to see why. |
 | `Permission denied` when writing the output                 | The output file is open in ArcGIS Pro or QGIS. Close it and try again.                                |
 | The output is completely black                              | Expected: display it with unique values. See [View Results in GIS](../get-started/view-results.md).   |
 | The output doesn't line up with the input                   | The input has no coordinate reference system. Assign one and rerun.                                   |

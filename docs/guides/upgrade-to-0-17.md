@@ -26,29 +26,21 @@ where they take up about 2 GB without being used. To remove them, delete the env
 
 ## With an NVIDIA GPU (Windows or Linux)
 
-Install 0.17 into a **new environment** rather than upgrading in place. Upgrading in place leaves the old CUDA
-libraries next to the new ones, and the mix can stop CUDA from working.
+CUDA needs an RTX 20 series or newer GPU and NVIDIA driver R580 or newer. Older GPUs, such as the GTX 10 or 900 series
+and Quadro P or M series, aren't supported by CUDA 13. Habitat-Mapper uses them through WebGPU instead, so follow
+[Without an NVIDIA GPU](#without-an-nvidia-gpu).
 
-1. Check which CUDA version your driver supports. Run `nvidia-smi` and read `CUDA Version` in the top right corner.
+On a supported GPU, install 0.17 into a **new environment** rather than upgrading in place. Upgrading in place leaves
+the old CUDA libraries next to the new ones, and the mix can stop CUDA from working.
+
+1. Check your driver. Run `nvidia-smi` and read `CUDA Version` in the top right corner. If it's below 13.0, update
+   the NVIDIA driver to R580 or newer, or skip CUDA and follow [Without an NVIDIA GPU](#without-an-nvidia-gpu).
 2. Delete your environment folder and [create a new environment](../get-started/install.md) (steps 2 and 3 of the
-   install guide). Then, with the new environment active, install with the matching extra:
+   install guide). Then, with the new environment active, install with the CUDA extra:
 
-    === "RTX 20 series or newer, CUDA 13 or newer"
-
-        ```bash
-        uv pip install "habitat-mapper[cuda]"
-        ```
-
-    === "CUDA 12, or an older GPU"
-
-        Use this for any GPU older than the RTX 20 series (e.g. GTX 10 series, Quadro P series), even if
-        `nvidia-smi` shows CUDA 13: CUDA 13 no longer supports those GPUs.
-
-        ```bash
-        uv pip install "habitat-mapper[cuda12]"
-        ```
-
-        On a newer GPU, you can instead update your NVIDIA driver to R580 or newer and use `[cuda]`.
+    ```bash
+    uv pip install "habitat-mapper[cuda]"
+    ```
 
 3. Run a model on one of your images with `--device cuda`:
 
@@ -59,40 +51,47 @@ libraries next to the new ones, and the mix can stop CUDA from working.
     The last `Running on` line should say `cuda`, with no `The model failed to run on cuda` warning. If CUDA can't
     run the model, Habitat-Mapper moves on to another device and the run still finishes, so check the messages
     rather than just that it finished. `hab devices` alone isn't enough either: it shows that CUDA is installed, but
-    not that a model can run on it.
+    not that a model can run on it. If CUDA fails, run the command again with the `DEBUG` environment variable set
+    to `1` to see why, and include that output if you [report the problem](https://github.com/HakaiInstitute/habitat-mapper/issues).
 
-Include the extra every time you upgrade later, otherwise a fresh environment won't have the CUDA libraries. To switch
-between `[cuda]` and `[cuda12]`, create a new environment again. Don't remove CUDA packages with
-`pip uninstall nvidia-...`: the CUDA 12 and CUDA 13 cuDNN packages install the same files, so uninstalling one deletes
-the other's files too.
+Include the extra every time you upgrade later, otherwise a fresh environment won't have the CUDA libraries. Don't
+remove CUDA packages with `pip uninstall nvidia-...`: the CUDA 12 and CUDA 13 cuDNN packages install the same files,
+so uninstalling one deletes the other's files too.
 
 !!! warning "CUDA stopped working after an earlier update?"
     Habitat-Mapper 0.16.3 started installing CUDA 13, which needs NVIDIA driver R580 or newer and an RTX 20 series
-    or newer GPU, so CUDA stopped working on older drivers and GPUs. Processing then ran on the CPU after an error
-    like this:
+    or newer GPU, so CUDA stopped working on older drivers and GPUs. With an older driver, processing ran on the CPU
+    after an error like this:
 
     ```
     EP Error ... CUDA failure 801 ...
     Falling back to ['CPUExecutionProvider'] and retrying.
     ```
 
-    In 0.17, install `[cuda12]` as above. On an RTX 20 series or newer GPU, you can update the driver instead.
+    With an older GPU, it stopped without writing an output, after an error like this:
+
+    ```
+    Program interrupted due to Fail: ... CUBLAS failure 8: the function requires an architectural feature absent
+    from the device ...
+    ```
+
+    In 0.17, older GPUs run on WebGPU instead. On an RTX 20 series or newer GPU, update the driver to R580 or newer
+    and install `[cuda]` as above.
 
 If you skip the extra, Habitat-Mapper still uses your NVIDIA GPU through WebGPU, which is usually slower than CUDA,
-and logs a message saying which extra to install.
+and logs a message saying what to install.
 
 ## In a uv project
 
-Update the dependency in `pyproject.toml`, adding the extra that matches your NVIDIA GPU, if you have one:
+Update the dependency in `pyproject.toml`. Add the CUDA extra only if you have an RTX 20 series or newer NVIDIA GPU:
 
 ```bash
-uv add "habitat-mapper[cuda]>=0.17"     # RTX 20 series or newer, CUDA 13
-uv add "habitat-mapper[cuda12]>=0.17"   # CUDA 12, or an older GPU
+uv add "habitat-mapper>=0.17"           # Any other computer
+uv add "habitat-mapper[cuda]>=0.17"     # RTX 20 series or newer, driver R580 or newer
 ```
 
-`uv sync` removes CUDA libraries that are no longer needed. If you switch between CUDA 12 and CUDA 13 (including
-from 0.16, which installed CUDA 13), delete the project's `.venv` folder and run `uv sync`, for the same reason as
-above.
+`uv sync` removes CUDA libraries that are no longer needed. If you're upgrading from 0.16.2 or older, which installed
+CUDA 12, delete the project's `.venv` folder and run `uv sync`, for the same reason as above.
 
 ## Check it worked
 

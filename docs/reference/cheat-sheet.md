@@ -7,7 +7,7 @@ Common commands on one page. For every option, see the [CLI reference](cli.md). 
 | Task                              | Command                                                      |
 |-----------------------------------|--------------------------------------------------------------|
 | Install                           | `pip install habitat-mapper`                                 |
-| …with CUDA, for NVIDIA GPUs       | `pip install "habitat-mapper[cuda]"` (`[cuda12]` for older drivers and GPUs) |
+| …with CUDA, for NVIDIA GPUs       | `pip install "habitat-mapper[cuda]"` (RTX 20 series or newer) |
 | Upgrade                           | `pip install --upgrade habitat-mapper`                       |
 | Check version                     | `hab --version`                                              |
 | List models                       | `hab models`                                                 |

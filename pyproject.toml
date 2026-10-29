@@ -1,6 +1,6 @@
 [project]
 name = "habitat-mapper"
-version = "0.14.1"
+version = "0.17.0"
 description = "Habitat segmentation with AI"
 readme = "README.md"
 authors = [{ name = "Taylor Denouden", email = "taylor.denouden@hakai.org" }]
@@ -14,9 +14,10 @@ dependencies = [
     "loguru>=0.7.3",
     "numba>=0.62",
     "numpy>=2.2.6",
-    "onnxruntime>=1.24.4 ; platform_system == 'Darwin'",
-    "onnxruntime-ep-webgpu>=0.1.0",
-    "onnxruntime-gpu>=1.24.4 ; platform_system != 'Darwin'",
+    "onnxruntime>=1.31.1 ; platform_system == 'Darwin'",
+    # The plugin is built against a specific ONNX Runtime API, so new releases are only allowed once tested
+    "onnxruntime-ep-webgpu>=0.4.0,<0.6",
+    "onnxruntime-gpu>=1.31.1 ; platform_system != 'Darwin'",
     "opencv-python-headless>=4.11.0.86",
     "platformdirs>=4.3.8",
     "pydantic>=2.11.7",
@@ -29,20 +30,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# CUDA 13, for NVIDIA driver R580 or newer
+# CUDA 13, for NVIDIA RTX 20 series or newer GPUs with driver R580 or newer. Other GPUs use WebGPU
 cuda = [
-    "onnxruntime-gpu[cuda, cudnn]>=1.27.0 ; platform_system != 'Darwin'",
+    "onnxruntime-gpu[cuda, cudnn]>=1.31.1 ; platform_system != 'Darwin'",
 ]
-# CUDA 12, for older NVIDIA drivers. onnxruntime-gpu 1.26 is the last release built for CUDA 12
-cuda12 = [
-    "onnxruntime-gpu[cuda, cudnn]>=1.24.4,<1.27.0 ; platform_system != 'Darwin'",
-    # onnxruntime-gpu 1.26 doesn't preload cudnn_engines_tensor_ir, added in cuDNN 9.21, and 9.20 was also faster
-    "nvidia-cudnn-cu12<9.21 ; platform_system != 'Darwin'",
-    # Newer WebGPU plugins need a newer ONNX Runtime than 1.26
-    "onnxruntime-ep-webgpu<0.2 ; platform_system != 'Darwin'",
-]
-# WebGPU is now installed by default. The extra is kept so existing install commands keep working
-webgpu = []
 
 [dependency-groups]
 conversion = [
@@ -78,7 +69,7 @@ examples = [
 Documentation = "https://habitat-mapper.readthedocs.io"
 
 [project.scripts]
-hab = "habitat_mapper.main:app"
+hab = "habitat_mapper.main:main"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14"]
@@ -147,5 +138,3 @@ required-environments = [
     "sys_platform == 'win32' and platform_machine == 'AMD64'",
     "sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
-# Each extra installs a different onnxruntime-gpu build
-conflicts = [[{ extra = "cuda" }, { extra = "cuda12" }]]

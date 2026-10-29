@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 import os
+import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated
@@ -68,10 +69,20 @@ logger.add(
     colorize=None,
 )
 
+# Set by main(), so that errors give a failing exit code from the command line but not when called from Python
+_exit_on_error = False
+
+
+def _on_error(_: BaseException) -> None:
+    if _exit_on_error and not DEBUG:
+        sys.exit(1)
+
+
 # Decorator to log error messages
 logger_catch = logger.catch(
     message="Program interrupted due to {record[exception].type.__name__}: '{record[exception].value}'",
     reraise=DEBUG,
+    onerror=_on_error,
 )
 
 # Install rich traceback formatting
@@ -694,6 +705,12 @@ def find_mussels(
     )
 
 
-if __name__ == "__main__":
-    # Run the cli app
+def main() -> None:
+    """Run the command line interface."""
+    global _exit_on_error  # noqa: PLW0603
+    _exit_on_error = True
     app()
+
+
+if __name__ == "__main__":
+    main()

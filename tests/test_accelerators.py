@@ -20,11 +20,22 @@ if TYPE_CHECKING:
     Machine = Callable[..., list[bool]]
 
 
-def _ep_device(ep_name: str, vendor: str, kind: str, vendor_id: int = 0, device_id: int = 0) -> SimpleNamespace:
+def _ep_device(
+    ep_name: str,
+    vendor: str,
+    kind: str,
+    vendor_id: int = 0,
+    device_id: int = 0,
+    metadata: dict[str, str] | None = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         ep_name=ep_name,
         device=SimpleNamespace(
-            vendor=vendor, vendor_id=vendor_id, device_id=device_id, type=SimpleNamespace(name=kind)
+            vendor=vendor,
+            vendor_id=vendor_id,
+            device_id=device_id,
+            type=SimpleNamespace(name=kind),
+            metadata=metadata or {},
         ),
     )
 
@@ -157,6 +168,37 @@ def test_webgpu_is_used_when_installed(machine: Machine) -> None:
     assert _devices(select_accelerators()) == ["webgpu", "cpu"]
 
 
+def test_webgpu_runs_on_one_gpu_when_there_are_several(machine: Machine) -> None:
+    # The WebGPU plugin rejects more than one device. ORT reports both GPUs of e.g. a workstation with an Intel iGPU
+    machine(
+        ep_devices=(
+            _ep_device("WebGpuExecutionProvider", "Intel Corporation", "GPU", metadata={"Discrete": "0"}),
+            _ep_device(
+                "WebGpuExecutionProvider",
+                "NVIDIA",
+                "GPU",
+                metadata={"Discrete": "1", "DxgiHighPerformanceIndex": "0"},
+            ),
+        ),
+        webgpu=True,
+    )
+    webgpu = select_accelerators()[0]
+    assert webgpu.device == "webgpu"
+    assert webgpu.hardware == "NVIDIA GPU"
+    assert len(webgpu.ep_devices) == 1
+
+
+def test_webgpu_prefers_the_highest_performance_gpu(machine: Machine) -> None:
+    machine(
+        ep_devices=(
+            _ep_device("WebGpuExecutionProvider", "Intel", "GPU", metadata={"DxgiHighPerformanceIndex": "1"}),
+            _ep_device("WebGpuExecutionProvider", "AMD", "GPU", metadata={"DxgiHighPerformanceIndex": "0"}),
+        ),
+        webgpu=True,
+    )
+    assert select_accelerators()[0].hardware == "AMD GPU"
+
+
 def test_webgpu_without_a_gpu_is_skipped(machine: Machine) -> None:
     machine(webgpu=True)
     assert _devices(select_accelerators()) == ["cpu"]
@@ -189,7 +231,7 @@ def test_device_read_from_environment(machine: Machine, monkeypatch: pytest.Monk
 
 def test_unavailable_device_explains_what_is_needed(machine: Machine) -> None:
     machine()
-    with pytest.raises(RuntimeError, match=r"habitat-mapper\[cuda12\]"):
+    with pytest.raises(RuntimeError, match=r"RTX 20 series.*habitat-mapper\[cuda\]"):
         select_accelerators("cuda")
     with pytest.raises(RuntimeError, match="DirectX 12"):
         select_accelerators("webgpu")
@@ -295,7 +337,7 @@ def test_hardware_is_named_from_the_vendor_id_when_ort_leaves_it_blank(machine: 
     assert select_accelerators()[0].hardware == "NVIDIA GPU"
 
 
-def test_driver_too_old_for_installed_cuda_points_at_cuda12(machine: Machine) -> None:
+def test_driver_too_old_for_installed_cuda_asks_for_a_driver_update(machine: Machine) -> None:
     # onnxruntime-gpu 1.27+ is built for CUDA 13, which needs NVIDIA driver R580 or newer
     cuda_loaded = machine(
         available=("CUDAExecutionProvider", "CPUExecutionProvider"),
@@ -307,17 +349,13 @@ def test_driver_too_old_for_installed_cuda_points_at_cuda12(machine: Machine) ->
     messages = _log_output("WARNING", select_accelerators)
     assert _devices(select_accelerators()) == ["cpu"]
     assert not cuda_loaded
-    assert len(messages) == 1
-    assert "R580" in messages[0]
-    assert "habitat-mapper[cuda12]" in messages[0]
+    assert messages == [
+        "WARNING The installed CUDA libraries need CUDA 13, but your NVIDIA driver only supports CUDA 12. Update the "
+        "driver to R580 or newer to use CUDA."
+    ]
 
 
-def test_cuda12_libraries_work_with_an_older_driver(machine: Machine) -> None:
-    machine(available=("CUDAExecutionProvider", "CPUExecutionProvider"), nvidia=True, driver_cuda=12, ort_cuda="12.9")
-    assert _devices(select_accelerators()) == ["cuda", "cpu"]
-
-
-def test_older_driver_on_webgpu_is_pointed_at_cuda12(machine: Machine) -> None:
+def test_older_driver_on_webgpu_is_told_to_update_it(machine: Machine) -> None:
     machine(
         ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),),
         nvidia=True,
@@ -327,16 +365,16 @@ def test_older_driver_on_webgpu_is_pointed_at_cuda12(machine: Machine) -> None:
     )
     messages = _log_output("INFO", select_accelerators)
     assert len(messages) == 1
-    assert "habitat-mapper[cuda12]" in messages[0]
+    assert messages[0].startswith("INFO Update the NVIDIA driver to R580 or newer")
+    assert "habitat-mapper[cuda]" in messages[0]
 
 
 def test_driver_too_old_for_any_cuda_asks_for_a_driver_update(machine: Machine) -> None:
-    machine(available=("CUDAExecutionProvider", "CPUExecutionProvider"), nvidia=True, driver_cuda=11)
+    machine(available=("CUDAExecutionProvider", "CPUExecutionProvider"), nvidia=True, driver_cuda=11, cudnn=False)
     messages = _log_output("WARNING", select_accelerators)
     assert _devices(select_accelerators()) == ["cpu"]
-    assert messages == [
-        "WARNING An NVIDIA GPU was found, but its driver is too old for CUDA. Update the driver to use CUDA."
-    ]
+    assert len(messages) == 1
+    assert "driver is too old for CUDA. Update the NVIDIA driver to R580 or newer" in messages[0]
 
 
 def test_cpu_backed_webgpu_devices_are_ignored(machine: Machine) -> None:
@@ -372,7 +410,7 @@ def test_cuda_request_explains_a_driver_that_is_too_old(machine: Machine) -> Non
         select_accelerators("cuda")
 
 
-def test_pascal_gpu_with_cuda13_libraries_is_pointed_at_cuda12(machine: Machine) -> None:
+def test_pascal_gpu_with_cuda_libraries_is_told_they_are_not_used(machine: Machine) -> None:
     # CUDA 13 dropped GPUs older than Turing (compute capability 7.5), though their R580 drivers report CUDA 13
     cuda_loaded = machine(
         available=("CUDAExecutionProvider", "CPUExecutionProvider"),
@@ -384,12 +422,15 @@ def test_pascal_gpu_with_cuda13_libraries_is_pointed_at_cuda12(machine: Machine)
     messages = _log_output("WARNING", select_accelerators)
     assert _devices(select_accelerators()) == ["cpu"]
     assert not cuda_loaded
-    assert len(messages) == 1
-    assert "compute capability 6.1" in messages[0]
-    assert "habitat-mapper[cuda12]" in messages[0]
+    assert messages == [
+        "WARNING CUDA doesn't support your NVIDIA GPU (compute capability 6.1, older than the RTX 20 series), so the "
+        "CUDA libraries installed with `[cuda]` aren't used."
+    ]
+    with pytest.raises(RuntimeError, match="compute capability 6.1"):
+        select_accelerators("cuda")
 
 
-def test_pascal_gpu_on_webgpu_is_pointed_at_cuda12(machine: Machine) -> None:
+def test_pascal_gpu_on_webgpu_is_not_told_to_install_cuda(machine: Machine) -> None:
     machine(
         ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),),
         nvidia=True,
@@ -397,19 +438,22 @@ def test_pascal_gpu_on_webgpu_is_pointed_at_cuda12(machine: Machine) -> None:
         cudnn=False,
         webgpu=True,
     )
-    messages = _log_output("INFO", select_accelerators)
-    assert len(messages) == 1
-    assert "habitat-mapper[cuda12]" in messages[0]
+    assert _devices(select_accelerators()) == ["webgpu", "cpu"]
+    assert _log_output("INFO", select_accelerators) == []
 
 
-def test_pascal_gpu_runs_cuda12(machine: Machine) -> None:
+def test_pascal_gpu_without_a_graphics_driver_is_told_to_install_one(machine: Machine) -> None:
     machine(
-        available=("CUDAExecutionProvider", "CPUExecutionProvider"),
+        ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),),
         nvidia=True,
         compute_capability=(6, 1),
-        ort_cuda="12.9",
+        cudnn=False,
+        webgpu=True,
+        hardware_gpu=False,
     )
-    assert _devices(select_accelerators()) == ["cuda", "cpu"]
+    messages = _log_output("WARNING", select_accelerators)
+    assert len(messages) == 1
+    assert "graphics driver isn't installed" in messages[0]
 
 
 def test_unknown_compute_capability_does_not_block_cuda(machine: Machine) -> None:
@@ -418,11 +462,10 @@ def test_unknown_compute_capability_does_not_block_cuda(machine: Machine) -> Non
 
 
 def test_cudnn_for_two_cuda_versions_is_reported(machine: Machine) -> None:
-    # Upgrading in place from [cuda] to [cuda12] leaves CUDA 13's cuDNN files next to CUDA 12's
+    # Upgrading in place from 0.16.2 or older leaves CUDA 12's cuDNN files next to CUDA 13's
     machine(
         available=("CUDAExecutionProvider", "CPUExecutionProvider"),
         nvidia=True,
-        ort_cuda="12.9",
         cudnn_packages=("nvidia-cudnn-cu12", "nvidia-cudnn-cu13"),
     )
     messages = _log_output("WARNING", select_accelerators)
@@ -442,6 +485,7 @@ def test_cuda_request_without_libraries_says_what_to_install(machine: Machine) -
     [
         ([(0x10DE, 0x26B1, False), (0x1414, 0x8C, True)], True),
         ([(0x1414, 0x8C, True)], False),  # Only WARP: the GPU has no driver
+        ([(0x1414, 0x8C, True), (0x1414, 0x8C, False)], False),  # Windows Sandbox lists WARP without the flag too
         ([], True),  # DXGI couldn't be queried
     ],
 )
