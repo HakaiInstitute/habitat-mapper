@@ -56,6 +56,7 @@ def machine(monkeypatch: pytest.MonkeyPatch) -> Iterator[Machine]:
         available: tuple[str, ...] = ("CPUExecutionProvider",),
         nvidia: bool = False,
         driver_cuda: int = 13,
+        compute_capability: tuple[int, int] | None = (8, 9),
         ort_cuda: str = "13.0",
         cudnn: bool = True,
         cuda_wheels: bool | None = None,
@@ -66,6 +67,7 @@ def machine(monkeypatch: pytest.MonkeyPatch) -> Iterator[Machine]:
         monkeypatch.setattr(accelerators.ort, "get_ep_devices", lambda: devices)
         monkeypatch.setattr(accelerators.ort, "get_available_providers", lambda: list(available))
         monkeypatch.setattr(accelerators, "nvidia_driver_cuda_version", lambda: driver_cuda if nvidia else None)
+        monkeypatch.setattr(accelerators, "nvidia_compute_capability", lambda: compute_capability if nvidia else None)
         monkeypatch.setattr(accelerators.ort, "cuda_version", ort_cuda, raising=False)
         monkeypatch.setattr(accelerators, "has_cudnn", lambda: cudnn)
         installed = cudnn if cuda_wheels is None else cuda_wheels
@@ -366,6 +368,51 @@ def test_cuda_request_explains_a_driver_that_is_too_old(machine: Machine) -> Non
     )
     with pytest.raises(RuntimeError, match="only supports CUDA 12"):
         select_accelerators("cuda")
+
+
+def test_pascal_gpu_with_cuda13_libraries_is_pointed_at_cuda12(machine: Machine) -> None:
+    # CUDA 13 dropped GPUs older than Turing (compute capability 7.5), though their R580 drivers report CUDA 13
+    cuda_loaded = machine(
+        available=("CUDAExecutionProvider", "CPUExecutionProvider"),
+        nvidia=True,
+        compute_capability=(6, 1),
+        cudnn=False,
+        cuda_wheels=True,
+    )
+    messages = _log_output("WARNING", select_accelerators)
+    assert _devices(select_accelerators()) == ["cpu"]
+    assert not cuda_loaded
+    assert len(messages) == 1
+    assert "compute capability 6.1" in messages[0]
+    assert "habitat-mapper[cuda12]" in messages[0]
+
+
+def test_pascal_gpu_on_webgpu_is_pointed_at_cuda12(machine: Machine) -> None:
+    machine(
+        ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),),
+        nvidia=True,
+        compute_capability=(6, 1),
+        cudnn=False,
+        webgpu=True,
+    )
+    messages = _log_output("INFO", select_accelerators)
+    assert len(messages) == 1
+    assert "habitat-mapper[cuda12]" in messages[0]
+
+
+def test_pascal_gpu_runs_cuda12(machine: Machine) -> None:
+    machine(
+        available=("CUDAExecutionProvider", "CPUExecutionProvider"),
+        nvidia=True,
+        compute_capability=(6, 1),
+        ort_cuda="12.9",
+    )
+    assert _devices(select_accelerators()) == ["cuda", "cpu"]
+
+
+def test_unknown_compute_capability_does_not_block_cuda(machine: Machine) -> None:
+    machine(available=("CUDAExecutionProvider", "CPUExecutionProvider"), nvidia=True, compute_capability=None)
+    assert _devices(select_accelerators()) == ["cuda", "cpu"]
 
 
 @pytest.mark.parametrize(

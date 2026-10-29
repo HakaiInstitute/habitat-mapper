@@ -29,19 +29,22 @@ where they take up about 2 GB without being used. To remove them, delete the env
 1. Check which CUDA version your driver supports. Run `nvidia-smi` and read `CUDA Version` in the top right corner.
 2. Upgrade with the matching extra:
 
-    === "CUDA 13 or newer"
+    === "RTX 20 series or newer, CUDA 13 or newer"
 
         ```bash
         uv pip install --upgrade "habitat-mapper[cuda]"
         ```
 
-    === "CUDA 12"
+    === "CUDA 12, or an older GPU"
+
+        Use this for any GPU older than the RTX 20 series (e.g. GTX 10 series, Quadro P series), even if
+        `nvidia-smi` shows CUDA 13: CUDA 13 no longer supports those GPUs.
 
         ```bash
         uv pip install --upgrade "habitat-mapper[cuda12]"
         ```
 
-        Or update your NVIDIA driver to R580 or newer and use `[cuda]`.
+        On a newer GPU, you can instead update your NVIDIA driver to R580 or newer and use `[cuda]`.
 
 3. Run a model on one of your images with `--device cuda`:
 
@@ -62,15 +65,15 @@ Include the extra every time you upgrade, otherwise a fresh environment won't ha
     `[cuda]` and `[cuda12]` later.
 
 !!! warning "CUDA stopped working after an earlier update?"
-    Habitat-Mapper 0.16.3 started installing CUDA 13, which needs NVIDIA driver R580 or newer, so CUDA stopped
-    working on older drivers. Processing then ran on the CPU after an error like this:
+    Habitat-Mapper 0.16.3 started installing CUDA 13, which needs NVIDIA driver R580 or newer and an RTX 20 series
+    or newer GPU, so CUDA stopped working on older drivers and GPUs. Processing then ran on the CPU after an error like this:
 
     ```
     EP Error ... CUDA failure 801 ...
     Falling back to ['CPUExecutionProvider'] and retrying.
     ```
 
-    In 0.17, install `[cuda12]` as above, or update the driver.
+    In 0.17, install `[cuda12]` as above. On an RTX 20 series or newer GPU, you can update the driver instead.
 
 If you skip the extra, Habitat-Mapper still uses your NVIDIA GPU through WebGPU, which is usually slower than CUDA,
 and logs a message saying which extra to install.

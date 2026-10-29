@@ -61,8 +61,9 @@ This includes GPU support for most graphics cards, so models run on your GPU aut
     uv pip install "habitat-mapper[cuda]"
     ```
 
-    This downloads about 2 GB and needs NVIDIA driver R580 or newer. If `nvidia-smi` shows `CUDA Version: 12.x`,
-    use `"habitat-mapper[cuda12]"` instead. See [GPU acceleration](../guides/install-advanced.md#gpu-acceleration).
+    This downloads about 2 GB and needs an RTX 20 series or newer GPU with driver R580 or newer. For older GPUs
+    (e.g. GTX 10 series, Quadro P series), or if `nvidia-smi` shows `CUDA Version: 12.x`, use
+    `"habitat-mapper[cuda12]"` instead. See [GPU acceleration](../guides/install-advanced.md#gpu-acceleration).
 
 ## 5. Check it worked
 

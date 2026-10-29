@@ -337,6 +337,36 @@ def nvidia_driver_cuda_version() -> int | None:
     return version.value // 1000  # e.g. 12080 for CUDA 12.8
 
 
+_CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR = 75
+_CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR = 76
+# CUDA 13 dropped Maxwell, Pascal and Volta GPUs (GTX 900 and 10 series, Quadro M and P series, Titan V)
+_CUDA13_MIN_COMPUTE_CAPABILITY = (7, 5)
+
+
+def nvidia_compute_capability() -> tuple[int, int] | None:
+    """Get the compute capability of the first NVIDIA GPU, the one ONNX Runtime uses by default.
+
+    Returns:
+        The compute capability, e.g. (6, 1) for a Pascal GPU, or None if it can't be read.
+    """
+    library = {"win32": "nvcuda.dll", "linux": "libcuda.so.1"}.get(sys.platform)
+    if library is None:
+        return None
+    try:
+        cuda = ctypes.CDLL(library)
+    except OSError:
+        return None
+    device, major, minor = ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+    if (
+        cuda.cuInit(0) != 0
+        or cuda.cuDeviceGet(ctypes.byref(device), 0) != 0
+        or cuda.cuDeviceGetAttribute(ctypes.byref(major), _CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR, device) != 0
+        or cuda.cuDeviceGetAttribute(ctypes.byref(minor), _CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR, device) != 0
+    ):
+        return None
+    return major.value, minor.value
+
+
 def has_cudnn() -> bool:
     """Check whether cuDNN can be loaded, either from the [cuda] extra or a system install.
 
@@ -434,13 +464,19 @@ def _describe(ep_devices: Sequence[Any]) -> str:
 
 
 def _explain_unused_nvidia_gpu(
-    driver_cuda: int, ort_cuda: int, *, cudnn: bool, other_gpu_found: bool
+    driver_cuda: int,
+    ort_cuda: int,
+    compute_capability: tuple[int, int] | None,
+    *,
+    cudnn: bool,
+    other_gpu_found: bool,
 ) -> tuple[str, str]:
     """Explain why CUDA isn't used on an NVIDIA GPU, and what to install. CUDA is the fastest option there.
 
     Args:
         driver_cuda: Newest CUDA major version the NVIDIA driver supports.
         ort_cuda: CUDA major version ONNX Runtime was built for, or 0 if it was built without CUDA.
+        compute_capability: The GPU's compute capability, or None if it couldn't be read.
         cudnn: Whether the CUDA libraries are installed.
         other_gpu_found: Whether another GPU accelerator, such as WebGPU, will be used instead.
 
@@ -451,7 +487,15 @@ def _explain_unused_nvidia_gpu(
         message = "An NVIDIA GPU was found, but its driver is too old for CUDA. Update the driver to use CUDA."
         return ("DEBUG" if other_gpu_found else "WARNING"), message
 
-    install = _CUDA_INSTALL[12 if driver_cuda == 12 else 13]
+    old_gpu = compute_capability is not None and compute_capability < _CUDA13_MIN_COMPUTE_CAPABILITY
+    install = _CUDA_INSTALL[12 if driver_cuda == 12 or old_gpu else 13]
+    if cudnn and old_gpu and ort_cuda >= 13 and compute_capability is not None:
+        major, minor = compute_capability
+        return "WARNING", (
+            f"The installed CUDA libraries need CUDA {ort_cuda}, which doesn't support your NVIDIA GPU (compute "
+            f"capability {major}.{minor}, older than the RTX 20 series). Switch to the CUDA 12 libraries with "
+            f"{install}."
+        )
     if cudnn and driver_cuda < ort_cuda:
         return "WARNING", (
             f"The installed CUDA libraries need CUDA {ort_cuda}, but your NVIDIA driver only supports CUDA "
@@ -478,7 +522,11 @@ def find_accelerators() -> tuple[Accelerator, ...]:
     nvidia = driver_cuda is not None
     # The CUDA version ONNX Runtime was built for, e.g. "13.0". Empty for builds without CUDA
     ort_cuda = int(ort_cuda_version.split(".")[0]) if (ort_cuda_version := getattr(ort, "cuda_version", "")) else 0
-    driver_too_old = driver_cuda is not None and driver_cuda < ort_cuda
+    compute_capability = nvidia_compute_capability() if nvidia and ort_cuda >= 13 else None
+    old_gpu = compute_capability is not None and compute_capability < _CUDA13_MIN_COMPUTE_CAPABILITY
+    # The newest CUDA version both the driver and the GPU support
+    supported_cuda = min(driver_cuda, 12) if driver_cuda is not None and old_gpu else driver_cuda
+    driver_too_old = supported_cuda is not None and supported_cuda < ort_cuda
     if nvidia and not driver_too_old:
         _load_cuda_libraries()
     cudnn = nvidia and not driver_too_old and has_cudnn()
@@ -514,7 +562,7 @@ def find_accelerators() -> tuple[Accelerator, ...]:
 
     if driver_cuda is not None and not cuda_found:
         level, message = _explain_unused_nvidia_gpu(
-            driver_cuda, ort_cuda, cudnn=_cuda_libraries_installed(), other_gpu_found=bool(found)
+            driver_cuda, ort_cuda, compute_capability, cudnn=_cuda_libraries_installed(), other_gpu_found=bool(found)
         )
         logger.log(level, message)
         _unavailable_reasons["cuda"] = message

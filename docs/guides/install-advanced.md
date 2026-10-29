@@ -27,18 +27,20 @@ on macOS. It works with your normal graphics driver, and was 2–14× faster tha
 the GPU.
 
 On NVIDIA GPUs, CUDA is usually faster still, up to about twice as fast as WebGPU in our tests. Its libraries are
-large (about 2 GB), so they are an optional
-extra on Windows and Linux. Pick the extra that matches your driver: run `nvidia-smi` and read `CUDA Version` in the
-top right corner.
+large (about 2 GB), so they are an optional extra on Windows and Linux. There are two versions; which one you need
+depends on your GPU and driver. Run `nvidia-smi` and read `CUDA Version` in the top right corner.
 
-| Hardware                                   | Install                                    | `--device` |
-|--------------------------------------------|--------------------------------------------|------------|
-| NVIDIA GPU, `CUDA Version: 13.x` or newer  | `pip install "habitat-mapper[cuda]"`       | `cuda`     |
-| NVIDIA GPU, `CUDA Version: 12.x`           | `pip install "habitat-mapper[cuda12]"`     | `cuda`     |
-| AMD, Intel or Apple GPU                    | `pip install habitat-mapper` (included)    | `webgpu`   |
-| Apple Neural Engine (macOS)                | `pip install habitat-mapper` (included)    | `coreml`   |
+| Hardware                                                        | Install                                 | `--device` |
+|-----------------------------------------------------------------|-----------------------------------------|------------|
+| NVIDIA RTX 20 series or newer, `CUDA Version: 13.x` or newer    | `pip install "habitat-mapper[cuda]"`    | `cuda`     |
+| NVIDIA GPU with `CUDA Version: 12.x`                            | `pip install "habitat-mapper[cuda12]"`  | `cuda`     |
+| Older NVIDIA GPU: GTX 10 or 900 series, Quadro P or M series    | `pip install "habitat-mapper[cuda12]"`  | `cuda`     |
+| AMD, Intel or Apple GPU                                         | `pip install habitat-mapper` (included) | `webgpu`   |
+| Apple Neural Engine (macOS)                                     | `pip install habitat-mapper` (included) | `coreml`   |
 
-`[cuda]` installs CUDA 13, which needs NVIDIA driver R580 or newer. `[cuda12]` installs CUDA 12 for older drivers.
+`[cuda]` installs CUDA 13, which needs NVIDIA driver R580 or newer and a GPU from the RTX 20 series (Turing) or
+newer. CUDA 13 dropped support for older GPUs, even though their drivers report CUDA 13. `[cuda12]` installs CUDA 12
+for older drivers and GPUs. If you pick the wrong one, Habitat-Mapper says which to use instead.
 Install only one of them. To switch from one to the other, create a new environment: the two install some of the same
 files, so uninstalling one also breaks the other. If you use a uv project, add the extra with
 `uv add "habitat-mapper[cuda]"`.
