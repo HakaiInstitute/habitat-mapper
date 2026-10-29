@@ -386,13 +386,23 @@ def has_cudnn() -> bool:
     return True
 
 
+def _cudnn_packages() -> set[str]:
+    """List the cuDNN packages installed from PyPI, e.g. nvidia-cudnn-cu12 from the [cuda12] extra.
+
+    Returns:
+        The normalized package names.
+    """
+    names = {(d.metadata["Name"] or "").lower().replace("_", "-") for d in distributions()}
+    return {name for name in names if name.startswith("nvidia-cudnn")}
+
+
 def _cuda_libraries_installed() -> bool:
     """Check whether cuDNN is installed, from the [cuda] or [cuda12] extra or a system install, without loading CUDA.
 
     Returns:
         True if cuDNN is installed.
     """
-    return has_cudnn() or any(d.metadata["Name"].startswith("nvidia-cudnn") for d in distributions())
+    return has_cudnn() or bool(_cudnn_packages())
 
 
 def _add_cudnn_to_path() -> None:
@@ -470,7 +480,7 @@ def _explain_unused_nvidia_gpu(
     *,
     cudnn: bool,
     other_gpu_found: bool,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     """Explain why CUDA isn't used on an NVIDIA GPU, and what to install. CUDA is the fastest option there.
 
     Args:
@@ -481,30 +491,33 @@ def _explain_unused_nvidia_gpu(
         other_gpu_found: Whether another GPU accelerator, such as WebGPU, will be used instead.
 
     Returns:
-        The log level and the message.
+        The log level, the message to log, and the reason to give if CUDA is requested with --device.
     """
     if driver_cuda < 12:
         message = "An NVIDIA GPU was found, but its driver is too old for CUDA. Update the driver to use CUDA."
-        return ("DEBUG" if other_gpu_found else "WARNING"), message
+        return ("DEBUG" if other_gpu_found else "WARNING"), message, message
 
     old_gpu = compute_capability is not None and compute_capability < _CUDA13_MIN_COMPUTE_CAPABILITY
     install = _CUDA_INSTALL[12 if driver_cuda == 12 or old_gpu else 13]
     if cudnn and old_gpu and ort_cuda >= 13 and compute_capability is not None:
         major, minor = compute_capability
-        return "WARNING", (
+        message = (
             f"The installed CUDA libraries need CUDA {ort_cuda}, which doesn't support your NVIDIA GPU (compute "
             f"capability {major}.{minor}, older than the RTX 20 series). Switch to the CUDA 12 libraries with "
             f"{install}."
         )
+        return "WARNING", message, message
     if cudnn and driver_cuda < ort_cuda:
-        return "WARNING", (
+        message = (
             f"The installed CUDA libraries need CUDA {ort_cuda}, but your NVIDIA driver only supports CUDA "
             f"{driver_cuda}. Update the driver to R580 or newer, or switch to the CUDA {driver_cuda} libraries with "
             f"{install}."
         )
+        return "WARNING", message, message
+    reason = f"Install the CUDA libraries with {install} to use it."
     if other_gpu_found:
-        return "INFO", f"Install the CUDA libraries with {install} for faster processing on NVIDIA GPUs."
-    return "WARNING", f"An NVIDIA GPU was found but can't be used. Install the CUDA libraries with {install}."
+        return "INFO", f"Install the CUDA libraries with {install} for faster processing on NVIDIA GPUs.", reason
+    return "WARNING", f"An NVIDIA GPU was found but can't be used. {reason}", reason
 
 
 @cache
@@ -527,6 +540,14 @@ def find_accelerators() -> tuple[Accelerator, ...]:
     # The newest CUDA version both the driver and the GPU support
     supported_cuda = min(driver_cuda, 12) if driver_cuda is not None and old_gpu else driver_cuda
     driver_too_old = supported_cuda is not None and supported_cuda < ort_cuda
+    if nvidia and len(cudnn_packages := _cudnn_packages()) > 1:
+        # E.g. after upgrading in place from [cuda] to [cuda12]. The packages share a folder, and cuDNN rejects a
+        # library left behind by the other version, so CUDA fails on the first batch
+        logger.warning(
+            f"CUDA libraries for more than one CUDA version are installed ({', '.join(sorted(cudnn_packages))}), "
+            "which stops CUDA from working. Create a new environment and install only one of "
+            f"{_CUDA_INSTALL[13]} or {_CUDA_INSTALL[12]}."
+        )
     if nvidia and not driver_too_old:
         _load_cuda_libraries()
     cudnn = nvidia and not driver_too_old and has_cudnn()
@@ -561,11 +582,11 @@ def find_accelerators() -> tuple[Accelerator, ...]:
             webgpu_without_driver = True
 
     if driver_cuda is not None and not cuda_found:
-        level, message = _explain_unused_nvidia_gpu(
+        level, message, reason = _explain_unused_nvidia_gpu(
             driver_cuda, ort_cuda, compute_capability, cudnn=_cuda_libraries_installed(), other_gpu_found=bool(found)
         )
         logger.log(level, message)
-        _unavailable_reasons["cuda"] = message
+        _unavailable_reasons["cuda"] = reason
     if webgpu_without_driver:
         message = (
             "A GPU was found, but its graphics driver isn't installed, so WebGPU can't use it. Install your GPU "

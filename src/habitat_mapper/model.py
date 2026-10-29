@@ -73,7 +73,8 @@ class ONNXModel:
             return self.__ort_sess
 
         # Get local model path (handles download if needed)
-        local_model_path = self.cfg.get_local_model_path(quiet=self._quiet)
+        # Don't log loading the model again when retrying on another device
+        local_model_path = self.cfg.get_local_model_path(quiet=self._quiet or bool(self.__failed_providers))
 
         # Load the model on the best available hardware
         if self.__ort_sess_device != self._device:

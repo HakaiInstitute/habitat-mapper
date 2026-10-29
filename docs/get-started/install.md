@@ -88,7 +88,8 @@ uv pip install --upgrade habitat-mapper
 
 If you installed the CUDA libraries, include the extra again, e.g. `uv pip install --upgrade "habitat-mapper[cuda]"`.
 
-Upgrading from a version before 0.17? GPU support changed. See [Upgrade to 0.17](../guides/upgrade-to-0-17.md).
+Upgrading from a version before 0.17? GPU support changed, and NVIDIA users should create a new environment. See
+[Upgrade to 0.17](../guides/upgrade-to-0-17.md).
 Upgrading from the old `kelp-o-matic` package? See [Upgrade from Kelp-O-Matic](../guides/upgrade-from-kom.md).
 
 ---

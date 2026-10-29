@@ -10,6 +10,7 @@
 | `CUDA out of memory` or the program crashes on large images | Lower `--crop-size` (e.g. `512`) or `--batch-size`. See [Tune Processing](../guides/tune-processing.md). |
 | *An NVIDIA GPU was found but can't be used*                 | Install the CUDA libraries with the extra the message names, `[cuda]` or `[cuda12]`. See [GPU acceleration](../guides/install-advanced.md#gpu-acceleration). |
 | *The installed CUDA libraries need CUDA 13, but your NVIDIA driver only supports CUDA 12* | Update the NVIDIA driver to R580 or newer, or switch to `pip install "habitat-mapper[cuda12]"`. |
+| *CUDA libraries for more than one CUDA version are installed* | Usually left over from upgrading in place. Delete the environment and create a new one with only `[cuda]` or `[cuda12]`. See [Upgrade to 0.17](../guides/upgrade-to-0-17.md). |
 | *The installed CUDA libraries need CUDA 13, which doesn't support your NVIDIA GPU* | Your GPU is older than the RTX 20 series. Switch to `pip install "habitat-mapper[cuda12]"` in a new environment. |
 | *A GPU was found, but its graphics driver isn't installed*  | Install your GPU vendor's driver. On Linux, also its Vulkan driver, e.g. `mesa-vulkan-drivers` for AMD and Intel GPUs. |
 | *Could not run the model on …* / *The model failed to run on …* | That device couldn't run this model, so the next one was used, ending with the CPU. Results are the same, just slower. Run with `DEBUG=1` to see why. |

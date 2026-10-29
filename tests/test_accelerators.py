@@ -60,6 +60,7 @@ def machine(monkeypatch: pytest.MonkeyPatch) -> Iterator[Machine]:
         ort_cuda: str = "13.0",
         cudnn: bool = True,
         cuda_wheels: bool | None = None,
+        cudnn_packages: tuple[str, ...] = (),
         webgpu: bool = False,
         hardware_gpu: bool = True,
     ) -> list[bool]:
@@ -72,6 +73,7 @@ def machine(monkeypatch: pytest.MonkeyPatch) -> Iterator[Machine]:
         monkeypatch.setattr(accelerators, "has_cudnn", lambda: cudnn)
         installed = cudnn if cuda_wheels is None else cuda_wheels
         monkeypatch.setattr(accelerators, "_cuda_libraries_installed", lambda: installed)
+        monkeypatch.setattr(accelerators, "_cudnn_packages", lambda: set(cudnn_packages))
         monkeypatch.setattr(accelerators, "_load_cuda_libraries", lambda: cuda_loaded.append(True))
         monkeypatch.setattr(accelerators, "_register_webgpu", lambda: "WebGpuExecutionProvider" if webgpu else None)
         monkeypatch.setattr(accelerators, "has_hardware_gpu_for_webgpu", lambda _devices: hardware_gpu)
@@ -413,6 +415,26 @@ def test_pascal_gpu_runs_cuda12(machine: Machine) -> None:
 def test_unknown_compute_capability_does_not_block_cuda(machine: Machine) -> None:
     machine(available=("CUDAExecutionProvider", "CPUExecutionProvider"), nvidia=True, compute_capability=None)
     assert _devices(select_accelerators()) == ["cuda", "cpu"]
+
+
+def test_cudnn_for_two_cuda_versions_is_reported(machine: Machine) -> None:
+    # Upgrading in place from [cuda] to [cuda12] leaves CUDA 13's cuDNN files next to CUDA 12's
+    machine(
+        available=("CUDAExecutionProvider", "CPUExecutionProvider"),
+        nvidia=True,
+        ort_cuda="12.9",
+        cudnn_packages=("nvidia-cudnn-cu12", "nvidia-cudnn-cu13"),
+    )
+    messages = _log_output("WARNING", select_accelerators)
+    assert len(messages) == 1
+    assert "nvidia-cudnn-cu12, nvidia-cudnn-cu13" in messages[0]
+    assert "Create a new environment" in messages[0]
+
+
+def test_cuda_request_without_libraries_says_what_to_install(machine: Machine) -> None:
+    machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),), nvidia=True, cudnn=False, webgpu=True)
+    with pytest.raises(RuntimeError, match=r"Install the CUDA libraries with .*habitat-mapper\[cuda\].* to use it\.$"):
+        select_accelerators("cuda")
 
 
 @pytest.mark.parametrize(
