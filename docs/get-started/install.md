@@ -55,7 +55,7 @@ uv pip install habitat-mapper
 This includes GPU support for most graphics cards, so models run on your GPU automatically if you have one.
 
 !!! tip "Have an NVIDIA GPU? (Windows or Linux)"
-    Install the CUDA libraries too. CUDA is about twice as fast as the built-in GPU support on NVIDIA cards:
+    Install the CUDA libraries too. On NVIDIA cards CUDA is usually faster than the built-in GPU support:
 
     ```bash
     uv pip install "habitat-mapper[cuda]"

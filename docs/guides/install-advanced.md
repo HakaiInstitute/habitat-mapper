@@ -26,7 +26,8 @@ included through [WebGPU](https://www.w3.org/TR/webgpu/), which uses DirectX 12 
 on macOS. It works with your normal graphics driver, and was 2–14× faster than the CPU in our tests, depending on
 the GPU.
 
-On NVIDIA GPUs, CUDA is about twice as fast again. Its libraries are large (about 2 GB), so they are an optional
+On NVIDIA GPUs, CUDA is usually faster still, up to about twice as fast as WebGPU in our tests. Its libraries are
+large (about 2 GB), so they are an optional
 extra on Windows and Linux. Pick the extra that matches your driver: run `nvidia-smi` and read `CUDA Version` in the
 top right corner.
 
@@ -38,7 +39,9 @@ top right corner.
 | Apple Neural Engine (macOS)                | `pip install habitat-mapper` (included)    | `coreml`   |
 
 `[cuda]` installs CUDA 13, which needs NVIDIA driver R580 or newer. `[cuda12]` installs CUDA 12 for older drivers.
-Install only one of them. If you use a uv project, add the extra with `uv add "habitat-mapper[cuda]"`.
+Install only one of them. To switch from one to the other, create a new environment: the two install some of the same
+files, so uninstalling one also breaks the other. If you use a uv project, add the extra with
+`uv add "habitat-mapper[cuda]"`.
 
 On Linux, WebGPU needs your GPU's Vulkan driver. NVIDIA's standard driver includes it; for AMD and Intel GPUs it is
 usually the `mesa-vulkan-drivers` package.

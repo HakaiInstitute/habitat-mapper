@@ -43,16 +43,37 @@ where they take up about 2 GB without being used. To remove them, delete the env
 
         Or update your NVIDIA driver to R580 or newer and use `[cuda]`.
 
-3. Check that `hab devices` lists `cuda` with a `1` in the **Auto** column.
+3. Run a model on one of your images with `--device cuda`:
+
+    ```bash
+    hab segment kelp-rgb input.tif output.tif --device cuda
+    ```
+
+    It should log `Running on cuda` and finish. `hab devices` alone isn't enough: it shows that CUDA is installed, but
+    not that a model can run on it.
 
 Include the extra every time you upgrade, otherwise a fresh environment won't have the CUDA libraries.
 
+!!! warning "Don't uninstall the old CUDA packages one by one"
+    After upgrading, the CUDA libraries from the old version stay installed next to the new ones. Don't remove them
+    with `pip uninstall nvidia-...`: the CUDA 12 and CUDA 13 cuDNN packages install the same files, so uninstalling
+    one deletes the other's files too. To reclaim the space, delete the environment folder and
+    [create a new environment](../get-started/install.md) with the extra you need. Do the same to switch between
+    `[cuda]` and `[cuda12]` later.
+
 !!! warning "CUDA stopped working after an earlier update?"
     Habitat-Mapper 0.16.3 started installing CUDA 13, which needs NVIDIA driver R580 or newer, so CUDA stopped
-    working on older drivers. In 0.17, install `[cuda12]` as above, or update the driver.
+    working on older drivers. Processing then ran on the CPU after an error like this:
 
-If you skip the extra, Habitat-Mapper still uses your NVIDIA GPU through WebGPU, about half as fast as CUDA, and logs
-a message saying which extra to install.
+    ```
+    EP Error ... CUDA failure 801 ...
+    Falling back to ['CPUExecutionProvider'] and retrying.
+    ```
+
+    In 0.17, install `[cuda12]` as above, or update the driver.
+
+If you skip the extra, Habitat-Mapper still uses your NVIDIA GPU through WebGPU, which is usually slower than CUDA,
+and logs a message saying which extra to install.
 
 ## In a uv project
 
