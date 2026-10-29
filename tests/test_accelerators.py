@@ -51,15 +51,21 @@ def machine(monkeypatch: pytest.MonkeyPatch) -> Iterator[Machine]:
         ep_devices: tuple[SimpleNamespace, ...] = (),
         available: tuple[str, ...] = ("CPUExecutionProvider",),
         nvidia: bool = False,
+        driver_cuda: int = 13,
+        ort_cuda: str = "13.0",
         cudnn: bool = True,
+        cuda_wheels: bool | None = None,
         webgpu: bool = False,
         hardware_gpu: bool = True,
     ) -> list[bool]:
         devices = [_ep_device("CPUExecutionProvider", "Acme", "CPU"), *ep_devices]
         monkeypatch.setattr(accelerators.ort, "get_ep_devices", lambda: devices)
         monkeypatch.setattr(accelerators.ort, "get_available_providers", lambda: list(available))
-        monkeypatch.setattr(accelerators, "has_nvidia_driver", lambda: nvidia)
+        monkeypatch.setattr(accelerators, "nvidia_driver_cuda_version", lambda: driver_cuda if nvidia else None)
+        monkeypatch.setattr(accelerators.ort, "cuda_version", ort_cuda, raising=False)
         monkeypatch.setattr(accelerators, "has_cudnn", lambda: cudnn)
+        installed = cudnn if cuda_wheels is None else cuda_wheels
+        monkeypatch.setattr(accelerators, "_cuda_libraries_installed", lambda: installed)
         monkeypatch.setattr(accelerators, "_load_cuda_libraries", lambda: cuda_loaded.append(True))
         monkeypatch.setattr(accelerators, "_register_webgpu", lambda: "WebGpuExecutionProvider" if webgpu else None)
         monkeypatch.setattr(accelerators, "has_hardware_gpu_for_webgpu", lambda: hardware_gpu)
@@ -173,9 +179,11 @@ def test_device_read_from_environment(machine: Machine, monkeypatch: pytest.Monk
     assert _devices(select_accelerators()) == ["cpu"]
 
 
-def test_unavailable_device_names_the_extra_to_install(machine: Machine) -> None:
+def test_unavailable_device_explains_what_is_needed(machine: Machine) -> None:
     machine()
-    with pytest.raises(RuntimeError, match=r"habitat-mapper\[webgpu\]"):
+    with pytest.raises(RuntimeError, match=r"habitat-mapper\[cuda12\]"):
+        select_accelerators("cuda")
+    with pytest.raises(RuntimeError, match="DirectX 12"):
         select_accelerators("webgpu")
 
 
@@ -250,7 +258,7 @@ def test_webgpu_on_a_software_renderer_is_skipped(machine: Machine, capsys: pyte
         assert _devices(select_accelerators()) == ["cpu"]
     finally:
         logger.remove(handler)
-    assert "no Vulkan driver for your GPU" in capsys.readouterr().err
+    assert "it has no Vulkan driver" in capsys.readouterr().err
 
 
 def test_nvidia_without_cuda_or_vulkan_gets_one_warning(machine: Machine) -> None:
@@ -277,6 +285,71 @@ def test_nvidia_on_webgpu_is_told_cuda_is_faster(machine: Machine) -> None:
 def test_hardware_is_named_from_the_vendor_id_when_ort_leaves_it_blank(machine: Machine) -> None:
     machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "", "GPU", vendor_id=0x10DE),), webgpu=True)
     assert select_accelerators()[0].hardware == "NVIDIA GPU"
+
+
+def test_driver_too_old_for_installed_cuda_points_at_cuda12(machine: Machine) -> None:
+    # onnxruntime-gpu 1.27+ is built for CUDA 13, which needs NVIDIA driver R580 or newer
+    cuda_loaded = machine(
+        available=("CUDAExecutionProvider", "CPUExecutionProvider"),
+        nvidia=True,
+        driver_cuda=12,
+        cudnn=False,
+        cuda_wheels=True,
+    )
+    messages = _log_output("WARNING", select_accelerators)
+    assert _devices(select_accelerators()) == ["cpu"]
+    assert not cuda_loaded
+    assert len(messages) == 1
+    assert "R580" in messages[0]
+    assert "habitat-mapper[cuda12]" in messages[0]
+
+
+def test_cuda12_libraries_work_with_an_older_driver(machine: Machine) -> None:
+    machine(available=("CUDAExecutionProvider", "CPUExecutionProvider"), nvidia=True, driver_cuda=12, ort_cuda="12.9")
+    assert _devices(select_accelerators()) == ["cuda", "cpu"]
+
+
+def test_older_driver_on_webgpu_is_pointed_at_cuda12(machine: Machine) -> None:
+    machine(
+        ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),),
+        nvidia=True,
+        driver_cuda=12,
+        cudnn=False,
+        webgpu=True,
+    )
+    messages = _log_output("INFO", select_accelerators)
+    assert len(messages) == 1
+    assert "habitat-mapper[cuda12]" in messages[0]
+
+
+def test_driver_too_old_for_any_cuda_asks_for_a_driver_update(machine: Machine) -> None:
+    machine(available=("CUDAExecutionProvider", "CPUExecutionProvider"), nvidia=True, driver_cuda=11)
+    messages = _log_output("WARNING", select_accelerators)
+    assert _devices(select_accelerators()) == ["cpu"]
+    assert messages == [
+        "WARNING An NVIDIA GPU was found, but its driver is too old for CUDA. Update the driver to use it."
+    ]
+
+
+def test_cpu_backed_webgpu_devices_are_ignored(machine: Machine) -> None:
+    # ORT offers one when ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER is set
+    machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "Microsoft", "CPU"),), webgpu=True)
+    assert _devices(select_accelerators()) == ["cpu"]
+
+
+def test_missing_vulkan_driver_is_not_mentioned_when_cuda_is_used(machine: Machine) -> None:
+    machine(
+        ep_devices=(
+            _ep_device("CUDAExecutionProvider", "NVIDIA", "GPU"),
+            _ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),
+        ),
+        nvidia=True,
+        webgpu=True,
+        hardware_gpu=False,
+    )
+    messages = _log_output("WARNING", select_accelerators)
+    assert _devices(select_accelerators()) == ["cuda", "cpu"]
+    assert messages == []
 
 
 @pytest.mark.parametrize(

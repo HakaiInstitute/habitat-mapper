@@ -39,7 +39,7 @@ jobs:
         python-version-file: "pyproject.toml"
 
     - name: Install dependencies
-      run: uv sync --all-extras --dev
+      run: uv sync --dev
 
     - name: Build and publish
       env:
