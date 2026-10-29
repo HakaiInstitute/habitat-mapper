@@ -21,20 +21,31 @@ cache, run `hab clean`.
 
 ## GPU acceleration
 
-A GPU is optional, and Habitat-Mapper runs on the CPU without one. GPU support is an install option, because the
-libraries are large and depend on your hardware:
+A GPU is optional, and Habitat-Mapper runs on the CPU without one. GPU support for most graphics cards is
+included through [WebGPU](https://www.w3.org/TR/webgpu/), which uses DirectX 12 on Windows, Vulkan on Linux and Metal
+on macOS. It works with your normal graphics driver, and was 2–14× faster than the CPU in our tests, depending on
+the GPU.
 
-| Hardware                                   | Install                              | `--device` |
-|--------------------------------------------|--------------------------------------|------------|
-| NVIDIA GPU (Windows, Linux)                | `pip install "habitat-mapper[cuda]"`   | `cuda`     |
-| AMD, Intel or Apple GPU                    | `pip install "habitat-mapper[webgpu]"` | `webgpu`   |
-| Apple Neural Engine (macOS)                | included                             | `coreml`   |
+On NVIDIA GPUs, CUDA is about twice as fast again. Its libraries are large (about 2 GB), so they are an optional
+extra on Windows and Linux. Pick the extra that matches your driver: run `nvidia-smi` and read `CUDA Version` in the
+top right corner.
 
-`[cuda]` needs a recent NVIDIA driver and downloads about 2–3 GB of CUDA libraries. `[webgpu]` uses DirectX 12 on
-Windows, Vulkan on Linux and Metal on macOS, so it only needs your normal graphics driver. You can install both.
+| Hardware                                   | Install                                    | `--device` |
+|--------------------------------------------|--------------------------------------------|------------|
+| NVIDIA GPU, `CUDA Version: 13.x` or newer  | `pip install "habitat-mapper[cuda]"`       | `cuda`     |
+| NVIDIA GPU, `CUDA Version: 12.x`           | `pip install "habitat-mapper[cuda12]"`     | `cuda`     |
+| AMD, Intel or Apple GPU                    | `pip install habitat-mapper` (included)    | `webgpu`   |
+| Apple Neural Engine (macOS)                | `pip install habitat-mapper` (included)    | `coreml`   |
+
+`[cuda]` installs CUDA 13, which needs NVIDIA driver R580 or newer. `[cuda12]` installs CUDA 12 for older drivers.
+Install only one of them. If you use a uv project, add the extra with `uv add "habitat-mapper[cuda]"`.
+
+On Linux, WebGPU needs your GPU's Vulkan driver. NVIDIA's standard driver includes it; for AMD and Intel GPUs it is
+usually the `mesa-vulkan-drivers` package.
 
 By default (`--device auto`), Habitat-Mapper uses the fastest device it finds: CUDA, then WebGPU, then the CPU. If a
-device can't run a model, it logs a warning and falls back to the next one. To see what it found, run:
+device can't run a model, it logs a warning and falls back to the next one. If your GPU isn't being used, a message
+says why and what to install. To see what it found, run:
 
 ```bash
 hab devices
@@ -42,12 +53,12 @@ hab devices
 
 To choose a device yourself, pass `--device` to `hab segment`, `device=` to `model.process()`, or set the
 `HAB_DEVICE` environment variable. CoreML is only used when you ask for it. It compiles models slowly and wasn't
-faster than the CPU on the models we tested. With a GPU you can usually raise `--batch-size` (see
-[Tune Processing](tune-processing.md#batch-size-and-gpus)).
+faster than the CPU on the models we tested. See [Tune Processing](tune-processing.md#batch-size-and-gpus) for
+choosing a batch size on a GPU.
 
-!!! note "Upgrading from 0.14 or earlier"
-    The CUDA libraries used to install by default on Windows and Linux. If you use an NVIDIA GPU, reinstall with
-    `pip install "habitat-mapper[cuda]"` to keep using it.
+!!! note "Upgrading from a version before 0.17"
+    GPU support changed in 0.17: the CUDA libraries are no longer installed by default. See
+    [Upgrade to 0.17](upgrade-to-0-17.md).
 
 ## Updating
 
@@ -64,6 +75,9 @@ We follow [semantic versioning](https://semver.org/).
     ```bash
     pip install --upgrade habitat-mapper
     ```
+
+If you installed an extra such as `[cuda]`, include it when you upgrade with pip:
+`pip install --upgrade "habitat-mapper[cuda]"`.
 
 ## Next steps
 

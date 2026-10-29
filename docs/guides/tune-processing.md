@@ -37,9 +37,16 @@ Python: `crop_size=3200`.
 
 ## Batch size and GPUs
 
-`--batch-size` sets how many tiles are processed at once. The default is 1. With a GPU, raising it to 4 or more can
-speed things up considerably. Lower it again if you get out-of-memory errors. GPU support is an install option. See
-[GPU acceleration](install-advanced.md#gpu-acceleration), and use `--device` to choose the hardware.
+`--batch-size` sets how many tiles are processed at once. The default is 1. Larger batches need more GPU memory, and
+on the GPUs we tested they were rarely faster:
+
+- **CUDA:** batch size 1 was fastest. Larger batches can help on some models; lower it again if you get
+  out-of-memory errors.
+- **WebGPU:** keep it at 1 or 2. Larger batches were slower per tile. On Windows, a batch that doesn't fit in GPU
+  memory spills into system memory instead of failing, and runs no faster than the CPU.
+
+See [GPU acceleration](install-advanced.md#gpu-acceleration) for setting up a GPU, and use `--device` to choose the
+hardware.
 
 ```bash
 hab segment kelp-rgb input.tif output.tif --batch-size 4
