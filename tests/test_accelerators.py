@@ -15,13 +15,17 @@ from habitat_mapper.accelerators import find_accelerators, select_accelerators
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
+    from pathlib import Path
 
     Machine = Callable[..., list[bool]]
 
 
-def _ep_device(ep_name: str, vendor: str, kind: str, vendor_id: int = 0) -> SimpleNamespace:
+def _ep_device(ep_name: str, vendor: str, kind: str, vendor_id: int = 0, device_id: int = 0) -> SimpleNamespace:
     return SimpleNamespace(
-        ep_name=ep_name, device=SimpleNamespace(vendor=vendor, vendor_id=vendor_id, type=SimpleNamespace(name=kind))
+        ep_name=ep_name,
+        device=SimpleNamespace(
+            vendor=vendor, vendor_id=vendor_id, device_id=device_id, type=SimpleNamespace(name=kind)
+        ),
     )
 
 
@@ -68,7 +72,7 @@ def machine(monkeypatch: pytest.MonkeyPatch) -> Iterator[Machine]:
         monkeypatch.setattr(accelerators, "_cuda_libraries_installed", lambda: installed)
         monkeypatch.setattr(accelerators, "_load_cuda_libraries", lambda: cuda_loaded.append(True))
         monkeypatch.setattr(accelerators, "_register_webgpu", lambda: "WebGpuExecutionProvider" if webgpu else None)
-        monkeypatch.setattr(accelerators, "has_hardware_gpu_for_webgpu", lambda: hardware_gpu)
+        monkeypatch.setattr(accelerators, "has_hardware_gpu_for_webgpu", lambda _devices: hardware_gpu)
         return cuda_loaded
 
     monkeypatch.delenv(accelerators.DEVICE_ENV_VAR, raising=False)
@@ -258,7 +262,7 @@ def test_webgpu_on_a_software_renderer_is_skipped(machine: Machine, capsys: pyte
         assert _devices(select_accelerators()) == ["cpu"]
     finally:
         logger.remove(handler)
-    assert "it has no Vulkan driver" in capsys.readouterr().err
+    assert "graphics driver isn't installed" in capsys.readouterr().err
 
 
 def test_nvidia_without_cuda_or_vulkan_gets_one_warning(machine: Machine) -> None:
@@ -277,7 +281,7 @@ def test_nvidia_on_webgpu_is_told_cuda_is_faster(machine: Machine) -> None:
     machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU"),), nvidia=True, webgpu=True)
     messages = _log_output("INFO", select_accelerators)
     assert messages == [
-        "INFO Install the CUDA libraries with `pip install 'habitat-mapper[cuda]'` for about 2x faster processing on "
+        "INFO Install the CUDA libraries with `pip install 'habitat-mapper[cuda]'` for faster processing on "
         "NVIDIA GPUs."
     ]
 
@@ -327,7 +331,7 @@ def test_driver_too_old_for_any_cuda_asks_for_a_driver_update(machine: Machine) 
     messages = _log_output("WARNING", select_accelerators)
     assert _devices(select_accelerators()) == ["cpu"]
     assert messages == [
-        "WARNING An NVIDIA GPU was found, but its driver is too old for CUDA. Update the driver to use it."
+        "WARNING An NVIDIA GPU was found, but its driver is too old for CUDA. Update the driver to use CUDA."
     ]
 
 
@@ -352,6 +356,67 @@ def test_missing_vulkan_driver_is_not_mentioned_when_cuda_is_used(machine: Machi
     assert messages == []
 
 
+def test_cuda_request_explains_a_driver_that_is_too_old(machine: Machine) -> None:
+    machine(
+        available=("CUDAExecutionProvider", "CPUExecutionProvider"),
+        nvidia=True,
+        driver_cuda=12,
+        cudnn=False,
+        cuda_wheels=True,
+    )
+    with pytest.raises(RuntimeError, match="only supports CUDA 12"):
+        select_accelerators("cuda")
+
+
+@pytest.mark.parametrize(
+    ("adapters", "expected"),
+    [
+        ([(0x10DE, 0x26B1, False), (0x1414, 0x8C, True)], True),
+        ([(0x1414, 0x8C, True)], False),  # Only WARP: the GPU has no driver
+        ([], True),  # DXGI couldn't be queried
+    ],
+)
+def test_windows_webgpu_needs_a_matching_hardware_adapter(
+    monkeypatch: pytest.MonkeyPatch, adapters: list[tuple[int, int, bool]], expected: bool
+) -> None:
+    monkeypatch.setattr(accelerators.sys, "platform", "win32")
+    monkeypatch.setattr(accelerators, "_dxgi_adapters", lambda: adapters)
+    webgpu_devices = [_ep_device("WebGpuExecutionProvider", "NVIDIA", "GPU", vendor_id=0x10DE, device_id=0x26B1)]
+    assert accelerators.has_hardware_gpu_for_webgpu(webgpu_devices) is expected
+
+
+def test_dxgi_query_is_skipped_off_windows() -> None:
+    if sys.platform == "win32":
+        pytest.skip("checks the non-Windows path")
+    assert accelerators._dxgi_adapters() == []
+
+
+def test_cudnn_folder_is_put_on_path_on_windows(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    cudnn_bin = tmp_path / "nvidia" / "cudnn" / "bin"
+    cudnn_bin.mkdir(parents=True)
+    monkeypatch.setattr(accelerators.sys, "platform", "win32")
+    monkeypatch.setattr(
+        accelerators, "find_spec", lambda name: SimpleNamespace(submodule_search_locations=[str(tmp_path / "nvidia")])
+    )
+    monkeypatch.setenv("PATH", "C:\\Windows")
+    accelerators._add_cudnn_to_path()
+    assert os.environ["PATH"].split(os.pathsep)[0] == str(cudnn_bin)
+
+
+def test_create_session_skips_providers_that_already_failed(machine: Machine, monkeypatch: pytest.MonkeyPatch) -> None:
+    machine(ep_devices=(_ep_device("WebGpuExecutionProvider", "AMD", "GPU"),), webgpu=True)
+    created = []
+
+    def fake_session(path: str, providers: list[str]) -> _FakeSession:
+        created.append(providers)
+        return _FakeSession(providers)
+
+    monkeypatch.setattr(accelerators.ort, "InferenceSession", fake_session)
+    monkeypatch.setattr(accelerators.Accelerator, "session_kwargs", _fake_session_kwargs)
+    accelerators.create_session("model.onnx", skip={"WebGpuExecutionProvider"})
+    assert created == [["CPUExecutionProvider"]]
+
+
 @pytest.mark.parametrize(
     ("types", "expected"),
     [([], False), ([accelerators._VK_PHYSICAL_DEVICE_TYPE_CPU], False), ([4, 2], True), ([1], True)],
@@ -361,7 +426,7 @@ def test_hardware_gpu_check_ignores_software_vulkan_devices(
 ) -> None:
     monkeypatch.setattr(accelerators.sys, "platform", "linux")
     monkeypatch.setattr(accelerators, "_vulkan_device_types", lambda: types)
-    assert accelerators.has_hardware_gpu_for_webgpu() is expected
+    assert accelerators.has_hardware_gpu_for_webgpu([]) is expected
 
 
 def test_native_stderr_is_logged_at_debug_level(capfd: pytest.CaptureFixture[str]) -> None:

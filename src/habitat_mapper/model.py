@@ -10,7 +10,7 @@ import numpy as np
 from loguru import logger
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidProtobuf
 
-from habitat_mapper.accelerators import create_session
+from habitat_mapper.accelerators import create_session, describe_provider
 from habitat_mapper.config import ModelConfig
 from habitat_mapper.processing import ImageProcessor
 from habitat_mapper.utils import sigmoid, softmax
@@ -35,6 +35,9 @@ class ONNXModel:
         self.cfg = config
         self.__ort_sess: ort.InferenceSession | None = None
         self.__ort_sess_device: Device | None = None
+        # Execution providers that failed on their first batch, and whether the current session has run a batch
+        self.__failed_providers: set[str] = set()
+        self.__ort_sess_has_run = False
         self._quiet: bool = False
         self._device: Device | None = None
 
@@ -73,9 +76,12 @@ class ONNXModel:
         local_model_path = self.cfg.get_local_model_path(quiet=self._quiet)
 
         # Load the model on the best available hardware
+        if self.__ort_sess_device != self._device:
+            self.__failed_providers.clear()
         try:
-            self.__ort_sess = create_session(local_model_path, device=self._device)
+            self.__ort_sess = create_session(local_model_path, device=self._device, skip=self.__failed_providers)
             self.__ort_sess_device = self._device
+            self.__ort_sess_has_run = False
         except InvalidProtobuf:
             logger.error("Failed to load ONNX model. Removing corrupted model file. Please try again.")
             local_model_path.unlink()
@@ -216,13 +222,25 @@ class ONNXModel:
             Predictions with shape [batch_size, height, width]
 
         """
-        batch = self._preprocess(batch)
+        inputs = {f"{self._input_name}": self._preprocess(batch).astype(np.float32)}
 
-        batch = self._ort_sess.run(
-            None,
-            {f"{self._input_name}": batch.astype(np.float32)},
-        )
-        return batch[0]
+        while True:
+            session = self._ort_sess
+            try:
+                outputs = session.run(None, inputs)
+            except Exception as e:
+                # Some failures only show up when the model first runs, e.g. a cuDNN library that can't be loaded.
+                # Retry the first batch on the next device instead of failing the whole run
+                provider = session.get_providers()[0]
+                if self.__ort_sess_has_run or provider == "CPUExecutionProvider":
+                    raise
+                logger.warning(f"The model failed to run on {describe_provider(provider)}. Trying the next device.")
+                logger.debug(f"{provider} failed: {e}")
+                self.__failed_providers.add(provider)
+                self.__ort_sess = None
+                continue
+            self.__ort_sess_has_run = True
+            return outputs[0]
 
     def process(
         self,

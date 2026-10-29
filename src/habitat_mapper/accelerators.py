@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from functools import cache
 from importlib.metadata import distributions
 from importlib.util import find_spec
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, get_args
 
 from loguru import logger
@@ -26,8 +27,7 @@ with warnings.catch_warnings():
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidProtobuf, NoSuchFile
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Sequence
-    from pathlib import Path
+    from collections.abc import Collection, Generator, Sequence
 
 # 4=FATAL. Errors are raised as exceptions and reported through loguru, so ORT's own error log is redundant
 ort.set_default_logger_severity(4)
@@ -58,6 +58,9 @@ _UNAVAILABLE_HINTS = {
     "coreml": "CoreML is only available on macOS.",
     "webgpu": "It needs a GPU with a DirectX 12 (Windows), Vulkan (Linux) or Metal (macOS) driver.",
 }
+
+# Why a device that was asked for isn't available, found by find_accelerators. Used in place of _UNAVAILABLE_HINTS
+_unavailable_reasons: dict[str, str] = {}
 
 
 @dataclass
@@ -182,21 +185,137 @@ def _vulkan_device_types() -> list[int]:
         vulkan.vkDestroyInstance(instance, None)
 
 
-def has_hardware_gpu_for_webgpu() -> bool:
+class _Luid(ctypes.Structure):
+    _fields_ = (("LowPart", ctypes.c_uint32), ("HighPart", ctypes.c_int32))
+
+
+class _DxgiAdapterDesc1(ctypes.Structure):
+    _fields_ = (
+        ("Description", ctypes.c_wchar * 128),
+        ("VendorId", ctypes.c_uint32),
+        ("DeviceId", ctypes.c_uint32),
+        ("SubSysId", ctypes.c_uint32),
+        ("Revision", ctypes.c_uint32),
+        ("DedicatedVideoMemory", ctypes.c_size_t),
+        ("DedicatedSystemMemory", ctypes.c_size_t),
+        ("SharedSystemMemory", ctypes.c_size_t),
+        ("AdapterLuid", _Luid),
+        ("Flags", ctypes.c_uint32),
+    )
+
+
+class _Guid(ctypes.Structure):
+    _fields_ = (
+        ("Data1", ctypes.c_uint32),
+        ("Data2", ctypes.c_uint16),
+        ("Data3", ctypes.c_uint16),
+        ("Data4", ctypes.c_uint8 * 8),
+    )
+
+
+# {770aae78-f26f-4dba-a829-253c83d1b387}
+_IID_IDXGIFACTORY1 = _Guid(
+    0x770AAE78, 0xF26F, 0x4DBA, (ctypes.c_uint8 * 8)(0xA8, 0x29, 0x25, 0x3C, 0x83, 0xD1, 0xB3, 0x87)
+)
+_DXGI_ADAPTER_FLAG_SOFTWARE = 2
+# Vtable slots. IUnknown: Release=2. IDXGIFactory1: EnumAdapters1=12. IDXGIAdapter1: GetDesc1=10
+_RELEASE, _ENUM_ADAPTERS1, _GET_DESC1 = 2, 12, 10
+_MAX_ADAPTERS = 64
+
+
+def _com_method(obj: ctypes.c_void_p, index: int, *argtypes: Any) -> Any:  # noqa: ANN401
+    """Get a method of a COM object from its vtable.
+
+    Args:
+        obj: Pointer to the COM object.
+        index: Slot of the method in the vtable.
+        *argtypes: Argument types after the object pointer.
+
+    Returns:
+        A callable that takes the object pointer followed by the arguments and returns an HRESULT or ULONG.
+
+    Raises:
+        OSError: If not on Windows.
+    """
+    if sys.platform != "win32":
+        raise OSError("COM is only available on Windows")
+    vtable = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+    return ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, *argtypes)(vtable[index])
+
+
+def _release(obj: ctypes.c_void_p) -> None:
+    if obj:
+        _com_method(obj, _RELEASE)(obj)
+
+
+def _dxgi_adapters() -> list[tuple[int, int, bool]]:
+    """List the DirectX graphics adapters on Windows, including software ones such as WARP.
+
+    WebGPU runs on Direct3D 12 on Windows. Without a vendor driver, the only adapter is the Microsoft Basic Render
+    Driver (WARP), a software renderer.
+
+    Returns:
+        (vendor_id, device_id, is_software) for each adapter, or an empty list on other platforms or if DXGI can't be
+        queried.
+    """
+    if sys.platform != "win32":
+        return []
+    adapters: list[tuple[int, int, bool]] = []
+    factory = ctypes.c_void_p()
+    try:
+        dxgi = ctypes.WinDLL("dxgi")
+        create_factory = dxgi.CreateDXGIFactory1
+        create_factory.argtypes = (ctypes.POINTER(_Guid), ctypes.POINTER(ctypes.c_void_p))
+        create_factory.restype = ctypes.c_long
+        if create_factory(ctypes.byref(_IID_IDXGIFACTORY1), ctypes.byref(factory)) != 0 or not factory:
+            return []
+        enum_adapters = _com_method(factory, _ENUM_ADAPTERS1, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p))
+        # EnumAdapters1 returns DXGI_ERROR_NOT_FOUND after the last adapter
+        for index in range(_MAX_ADAPTERS):
+            adapter = ctypes.c_void_p()
+            if enum_adapters(factory, index, ctypes.byref(adapter)) != 0 or not adapter:
+                break
+            try:
+                desc = _DxgiAdapterDesc1()
+                get_desc = _com_method(adapter, _GET_DESC1, ctypes.POINTER(_DxgiAdapterDesc1))
+                if get_desc(adapter, ctypes.byref(desc)) == 0:
+                    adapters.append((desc.VendorId, desc.DeviceId, bool(desc.Flags & _DXGI_ADAPTER_FLAG_SOFTWARE)))
+            finally:
+                _release(adapter)
+    except Exception:  # noqa: BLE001
+        return []
+    finally:
+        try:
+            _release(factory)
+        except Exception:  # noqa: BLE001, S110
+            pass
+    return adapters
+
+
+def has_hardware_gpu_for_webgpu(webgpu_devices: Sequence[Any]) -> bool:
     """Check whether WebGPU would run on a hardware GPU rather than a software renderer.
 
-    On Linux, WebGPU runs on Vulkan. ONNX Runtime reports the GPU it finds on the PCI bus even when its Vulkan driver is
-    missing, in which case WebGPU either fails or runs on a software renderer (llvmpipe) that is slower than the CPU.
-    Other platforms aren't checked.
+    ONNX Runtime reports the GPU it finds on the PCI bus even when the GPU's driver is missing. WebGPU then fails, or
+    runs on a software renderer that is slower than the CPU: llvmpipe on Linux (Vulkan), WARP on Windows (DirectX 12).
+    macOS isn't checked.
+
+    Args:
+        webgpu_devices: The WebGPU devices reported by ort.get_ep_devices().
 
     Returns:
         True if WebGPU should run on a hardware GPU.
     """
-    if sys.platform != "linux":
-        return True
-    with _capture_native_stderr("the Vulkan loader"):
-        types = _vulkan_device_types()
-    return any(t != _VK_PHYSICAL_DEVICE_TYPE_CPU for t in types)
+    if sys.platform == "linux":
+        with _capture_native_stderr("the Vulkan loader"):
+            types = _vulkan_device_types()
+        return any(t != _VK_PHYSICAL_DEVICE_TYPE_CPU for t in types)
+    if sys.platform == "win32":
+        adapters = _dxgi_adapters()
+        if not adapters:
+            return True  # DXGI couldn't be queried, which doesn't mean the GPU is unusable
+        hardware = {(vendor, device) for vendor, device, software in adapters if not software}
+        return any((d.device.vendor_id, d.device.device_id) in hardware for d in webgpu_devices)
+    return True
 
 
 def nvidia_driver_cuda_version() -> int | None:
@@ -246,12 +365,31 @@ def _cuda_libraries_installed() -> bool:
     return has_cudnn() or any(d.metadata["Name"].startswith("nvidia-cudnn") for d in distributions())
 
 
+def _add_cudnn_to_path() -> None:
+    """On Windows, put the cuDNN folder from the [cuda] or [cuda12] extra on PATH.
+
+    cuDNN loads its sub-libraries by name the first time it needs them, and on Windows only finds them through PATH.
+    ONNX Runtime preloads a fixed list of them, which can miss ones added in newer cuDNN releases, e.g.
+    cudnn_engines_tensor_ir64_9.dll in cuDNN 9.21. The model would then fail on its first convolution.
+    """
+    if sys.platform != "win32":
+        return
+    spec = find_spec("nvidia")
+    if spec is None:
+        return
+    for root in spec.submodule_search_locations or []:
+        cudnn_bin = Path(root) / "cudnn" / "bin"
+        if cudnn_bin.is_dir():
+            os.environ["PATH"] = f"{cudnn_bin}{os.pathsep}{os.environ.get('PATH', '')}"
+
+
 def _load_cuda_libraries() -> None:
     """Load the CUDA and cuDNN libraries so ONNX Runtime can register its CUDA provider.
 
     ONNX Runtime prints a line for every library it fails to load. That output is discarded here; whether CUDA ended up
     usable is checked through ort.get_ep_devices() afterwards.
     """
+    _add_cudnn_to_path()
     with contextlib.redirect_stdout(io.StringIO()), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         try:
@@ -295,31 +433,34 @@ def _describe(ep_devices: Sequence[Any]) -> str:
     return ", ".join(dict.fromkeys(names))
 
 
-def _explain_unused_nvidia_gpu(driver_cuda: int, ort_cuda: int, *, cudnn: bool, other_gpu_found: bool) -> None:
-    """Tell NVIDIA users why CUDA isn't used, and what to install. CUDA is their fastest option.
+def _explain_unused_nvidia_gpu(
+    driver_cuda: int, ort_cuda: int, *, cudnn: bool, other_gpu_found: bool
+) -> tuple[str, str]:
+    """Explain why CUDA isn't used on an NVIDIA GPU, and what to install. CUDA is the fastest option there.
 
     Args:
         driver_cuda: Newest CUDA major version the NVIDIA driver supports.
         ort_cuda: CUDA major version ONNX Runtime was built for, or 0 if it was built without CUDA.
         cudnn: Whether the CUDA libraries are installed.
         other_gpu_found: Whether another GPU accelerator, such as WebGPU, will be used instead.
+
+    Returns:
+        The log level and the message.
     """
     if driver_cuda < 12:
-        if not other_gpu_found:
-            logger.warning("An NVIDIA GPU was found, but its driver is too old for CUDA. Update the driver to use it.")
-        return
+        message = "An NVIDIA GPU was found, but its driver is too old for CUDA. Update the driver to use CUDA."
+        return ("DEBUG" if other_gpu_found else "WARNING"), message
 
     install = _CUDA_INSTALL[12 if driver_cuda == 12 else 13]
     if cudnn and driver_cuda < ort_cuda:
-        logger.warning(
+        return "WARNING", (
             f"The installed CUDA libraries need CUDA {ort_cuda}, but your NVIDIA driver only supports CUDA "
             f"{driver_cuda}. Update the driver to R580 or newer, or switch to the CUDA {driver_cuda} libraries with "
             f"{install}."
         )
-    elif other_gpu_found:
-        logger.info(f"Install the CUDA libraries with {install} for about 2x faster processing on NVIDIA GPUs.")
-    else:
-        logger.warning(f"An NVIDIA GPU was found but can't be used. Install the CUDA libraries with {install}.")
+    if other_gpu_found:
+        return "INFO", f"Install the CUDA libraries with {install} for faster processing on NVIDIA GPUs."
+    return "WARNING", f"An NVIDIA GPU was found but can't be used. Install the CUDA libraries with {install}."
 
 
 @cache
@@ -332,6 +473,7 @@ def find_accelerators() -> tuple[Accelerator, ...]:
     Returns:
         Usable accelerators in order of preference. The CPU is always last.
     """
+    _unavailable_reasons.clear()
     driver_cuda = nvidia_driver_cuda_version()
     nvidia = driver_cuda is not None
     # The CUDA version ONNX Runtime was built for, e.g. "13.0". Empty for builds without CUDA
@@ -365,20 +507,26 @@ def find_accelerators() -> tuple[Accelerator, ...]:
     # Only hardware GPUs: ORT offers a CPU-backed WebGPU device when ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER is set
     webgpu_devices = tuple(d for d in ep_devices.get(webgpu_ep or "", []) if d.device.type.name == "GPU")
     if webgpu_ep and webgpu_devices:
-        if has_hardware_gpu_for_webgpu():
+        if has_hardware_gpu_for_webgpu(webgpu_devices):
             found.append(Accelerator("webgpu", webgpu_ep, _describe(webgpu_devices), webgpu_devices))
         else:
             webgpu_without_driver = True
 
     if driver_cuda is not None and not cuda_found:
-        _explain_unused_nvidia_gpu(
+        level, message = _explain_unused_nvidia_gpu(
             driver_cuda, ort_cuda, cudnn=_cuda_libraries_installed(), other_gpu_found=bool(found)
         )
-    elif webgpu_without_driver and not found:
-        logger.warning(
-            "A GPU was found, but it has no Vulkan driver, so it can't be used. "
-            "Install your GPU vendor's Vulkan driver to use it."
+        logger.log(level, message)
+        _unavailable_reasons["cuda"] = message
+    if webgpu_without_driver:
+        message = (
+            "A GPU was found, but its graphics driver isn't installed, so WebGPU can't use it. Install your GPU "
+            "vendor's driver (on Linux, including its Vulkan driver)."
         )
+        _unavailable_reasons["webgpu"] = message
+        # NVIDIA users were already told to install CUDA, their fastest option
+        if not found and "cuda" not in _unavailable_reasons:
+            logger.warning(message)
 
     if _COREML_EP in ep_devices:
         found.append(
@@ -393,6 +541,21 @@ def find_accelerators() -> tuple[Accelerator, ...]:
 
     found.append(Accelerator("cpu", _CPU_EP, _describe(ep_devices.get(_CPU_EP, [])) or "CPU"))
     return tuple(found)
+
+
+def describe_provider(ep_name: str) -> str:
+    """Describe an execution provider for messages.
+
+    Args:
+        ep_name: ONNX Runtime execution provider name.
+
+    Returns:
+        The device and hardware, e.g. "cuda (NVIDIA GPU)", or the provider name if it isn't a known accelerator.
+    """
+    for accelerator in find_accelerators():
+        if accelerator.ep_name == ep_name:
+            return f"{accelerator.device} ({accelerator.hardware})"
+    return ep_name
 
 
 def select_accelerators(device: str | None = None) -> list[Accelerator]:
@@ -421,11 +584,14 @@ def select_accelerators(device: str | None = None) -> list[Accelerator]:
 
     chosen = [a for a in found if a.device == device]
     if not chosen:
-        raise RuntimeError(f"Device '{device}' is not available on this machine. {_UNAVAILABLE_HINTS[device]}")
+        reason = _unavailable_reasons.get(device, _UNAVAILABLE_HINTS[device])
+        raise RuntimeError(f"Device '{device}' is not available on this machine. {reason}")
     return [*chosen, cpu]
 
 
-def create_session(model_path: str | Path, device: str | None = None) -> ort.InferenceSession:
+def create_session(
+    model_path: str | Path, device: str | None = None, *, skip: Collection[str] = ()
+) -> ort.InferenceSession:
     """Create an ONNX Runtime session on the best available accelerator.
 
     If an accelerator fails to load the model, a warning is logged and the next one is tried, ending with the CPU.
@@ -433,6 +599,7 @@ def create_session(model_path: str | Path, device: str | None = None) -> ort.Inf
     Args:
         model_path: Path to the ONNX model.
         device: Device to run on. See select_accelerators.
+        skip: Execution providers not to try, e.g. ones that already failed to run the model.
 
     Returns:
         The inference session.
@@ -442,7 +609,7 @@ def create_session(model_path: str | Path, device: str | None = None) -> ort.Inf
         NoSuchFile: If the model file does not exist.
     """
     *accelerators, cpu = select_accelerators(device)
-    for accelerator in accelerators:
+    for accelerator in (a for a in accelerators if a.ep_name not in skip):
         try:
             with _capture_native_stderr(accelerator.ep_name):
                 session = ort.InferenceSession(str(model_path), **accelerator.session_kwargs())
