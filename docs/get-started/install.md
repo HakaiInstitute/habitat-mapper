@@ -52,14 +52,31 @@ With the environment active, run:
 uv pip install habitat-mapper
 ```
 
+This includes GPU support for most graphics cards, so models run on your GPU automatically if you have one.
+
+!!! tip "Have an NVIDIA GPU? (Windows or Linux)"
+    Install the CUDA libraries too. On NVIDIA cards CUDA is usually faster than the built-in GPU support:
+
+    ```bash
+    uv pip install "habitat-mapper[cuda]"
+    ```
+
+    This downloads about 2 GB and needs an RTX 20 series or newer GPU with driver R580 or newer. Older GPUs (e.g.
+    GTX 10 series, Quadro P series) don't need it: they use the built-in GPU support. See
+    [GPU acceleration](../guides/install-advanced.md#gpu-acceleration).
+
 ## 5. Check it worked
 
 ```bash
 hab --version
+hab devices
 ```
 
 You should see a version number. If you see `command not found` or `'hab' is not recognized`, the environment
 isn't active. Repeat [step 3](#3-activate-the-environment) and try again.
+
+`hab devices` lists the hardware Habitat-Mapper can use. The device marked `1` in the **Auto** column is the one
+models run on.
 
 ## Updating later
 
@@ -69,6 +86,10 @@ Activate the environment, then run:
 uv pip install --upgrade habitat-mapper
 ```
 
+If you installed the CUDA libraries, include the extra again, e.g. `uv pip install --upgrade "habitat-mapper[cuda]"`.
+
+Upgrading from a version before 0.17? GPU support changed, and NVIDIA users should create a new environment. See
+[Upgrade to 0.17](../guides/upgrade-to-0-17.md).
 Upgrading from the old `kelp-o-matic` package? See [Upgrade from Kelp-O-Matic](../guides/upgrade-from-kom.md).
 
 ---

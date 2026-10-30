@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import itertools
 import os
-from importlib.metadata import version
+import sys
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated
 
@@ -16,11 +17,13 @@ from cyclopts.types import ExistingFile, File, PositiveInt  # noqa: TC002
 from loguru import logger
 from rich import box
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.table import Table
 from rich.traceback import install
 
+from habitat_mapper.accelerators import DEVICE_ENV_VAR, Device, find_accelerators, select_accelerators
 from habitat_mapper.registry import model_registry
 from habitat_mapper.utils import get_local_model_dir, is_url
 
@@ -44,7 +47,12 @@ def _log_formatter(record: dict) -> str:
         "CRITICAL": "bold white on red",
     }
     lvl_color = color_map.get(record["level"].name, "cyan")
-    return f"[not bold cyan]{{time:YYYY-MM-DD HH:mm:ss}}[/not bold cyan] | [{lvl_color}]{{message}}[/{lvl_color}]"
+    # Escape the message so text in square brackets, like `habitat-mapper[cuda]`, isn't read as Rich markup
+    record["extra"]["escaped_message"] = escape(record["message"])
+    return (
+        f"[not bold cyan]{{time:YYYY-MM-DD HH:mm:ss}}[/not bold cyan] | "
+        f"[{lvl_color}]{{extra[escaped_message]}}[/{lvl_color}]"
+    )
 
 
 DEBUG = bool(os.getenv("DEBUG", False))
@@ -61,12 +69,20 @@ logger.add(
     colorize=None,
 )
 
+# Set by main(), so that errors give a failing exit code from the command line but not when called from Python
+_exit_on_error = False
+
+
+def _on_error(_: BaseException) -> None:
+    if _exit_on_error and not DEBUG:
+        sys.exit(1)
+
+
 # Decorator to log error messages
 logger_catch = logger.catch(
-    message=(
-        "[bold red]Program interrupted due to {record[exception].type.__name__}: '{record[exception].value}'[/bold red]"
-    ),
+    message="Program interrupted due to {record[exception].type.__name__}: '{record[exception].value}'",
     reraise=DEBUG,
+    onerror=_on_error,
 )
 
 # Install rich traceback formatting
@@ -246,6 +262,38 @@ def revisions(
 
 @app.command
 @logger_catch
+def devices() -> None:
+    """List the hardware Habitat-Mapper can run models on, in the order `--device auto` tries them."""
+    auto = select_accelerators("auto")
+
+    table = Table(title="[bold green]Available Devices[/bold green]")
+    table.add_column("Device", style="cyan", no_wrap=True)
+    table.add_column("Hardware", style="white")
+    table.add_column("Execution Provider", style="magenta")
+    table.add_column("Auto", style="green")
+    for accelerator in find_accelerators():
+        order = auto.index(accelerator) + 1 if accelerator in auto else None
+        table.add_row(
+            accelerator.device,
+            accelerator.hardware,
+            accelerator.ep_name,
+            f"{order}" if order else "[dim]only with --device[/dim]",
+        )
+    console.print(table)
+
+    packages = []
+    for package in ("onnxruntime", "onnxruntime-gpu", "onnxruntime-ep-webgpu"):
+        try:
+            packages.append(f"{package} {version(package)}")
+        except PackageNotFoundError:
+            pass
+    console.print(f"[dim]Installed: {', '.join(packages)}[/dim]")
+    if device := os.environ.get(DEVICE_ENV_VAR):
+        console.print(f"[dim]{DEVICE_ENV_VAR}={device}[/dim]")
+
+
+@app.command
+@logger_catch
 def clean() -> None:
     """Clear the Habitat-Mapper model cache to free up space. Models will be re-downloaded as needed."""
     model_dir = get_local_model_dir()
@@ -397,6 +445,15 @@ def segment(
             negative="",
         ),
     ] = None,
+    device: Annotated[
+        Device | None,
+        Parameter(
+            help=(
+                f"Hardware to run the model on. `auto` uses the fastest available device. Run `hab devices` to see "
+                f"what is available. Defaults to the {DEVICE_ENV_VAR} environment variable, or `auto`"
+            ),
+        ),
+    ] = None,
     quiet: Annotated[
         bool,
         Parameter(
@@ -445,6 +502,7 @@ def segment(
             morph_kernel_size=morph_kernel_size,
             band_order=band_order,
             quiet=quiet,
+            device=device,
         )
 
         if not quiet:
@@ -647,6 +705,12 @@ def find_mussels(
     )
 
 
-if __name__ == "__main__":
-    # Run the cli app
+def main() -> None:
+    """Run the command line interface."""
+    global _exit_on_error  # noqa: PLW0603
+    _exit_on_error = True
     app()
+
+
+if __name__ == "__main__":
+    main()

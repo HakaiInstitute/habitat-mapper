@@ -21,10 +21,45 @@ cache, run `hab clean`.
 
 ## GPU acceleration
 
-A GPU is optional. On Windows and Linux, Habitat-Mapper installs the GPU build of ONNX Runtime, including CUDA
-libraries, and automatically uses a supported NVIDIA GPU when one is available. Otherwise it falls back to the
-CPU. On macOS it always runs on the CPU. With a GPU you can usually raise `--batch-size` (see
-[Tune Processing](tune-processing.md#batch-size-and-gpus)).
+A GPU is optional, and Habitat-Mapper runs on the CPU without one. GPU support for most graphics cards is
+included through [WebGPU](https://www.w3.org/TR/webgpu/), which uses DirectX 12 on Windows, Vulkan on Linux and Metal
+on macOS. It works with your normal graphics driver, and was 2–14× faster than the CPU in our tests, depending on
+the GPU.
+
+On NVIDIA GPUs, CUDA is usually faster still, up to about twice as fast as WebGPU in our tests. Its libraries are
+large (about 2 GB), so they are an optional extra on Windows and Linux. They need an RTX 20 series or newer GPU and
+NVIDIA driver R580 or newer. To check the driver, run `nvidia-smi` and read `CUDA Version` in the top right corner.
+
+| Hardware                                                        | Install                                 | `--device` |
+|-----------------------------------------------------------------|-----------------------------------------|------------|
+| NVIDIA RTX 20 series or newer, `CUDA Version: 13.x` or newer    | `pip install "habitat-mapper[cuda]"`    | `cuda`     |
+| Older NVIDIA GPU: GTX 10 or 900 series, Quadro P or M series    | `pip install habitat-mapper` (included) | `webgpu`   |
+| AMD, Intel or Apple GPU                                         | `pip install habitat-mapper` (included) | `webgpu`   |
+| Apple Neural Engine (macOS)                                     | `pip install habitat-mapper` (included) | `coreml`   |
+
+`[cuda]` installs CUDA 13. CUDA 13 dropped support for GPUs older than the RTX 20 series (Turing), even though their
+drivers report CUDA 13, so those GPUs use WebGPU. If CUDA can't be used, Habitat-Mapper says why. If you use a uv
+project, add the extra with `uv add "habitat-mapper[cuda]"`.
+
+On Linux, WebGPU needs your GPU's Vulkan driver. NVIDIA's standard driver includes it; for AMD and Intel GPUs it is
+usually the `mesa-vulkan-drivers` package.
+
+By default (`--device auto`), Habitat-Mapper uses the fastest device it finds: CUDA, then WebGPU, then the CPU. If a
+device can't run a model, it logs a warning and falls back to the next one. If your GPU isn't being used, a message
+says why and what to install. To see what it found, run:
+
+```bash
+hab devices
+```
+
+To choose a device yourself, pass `--device` to `hab segment`, `device=` to `model.process()`, or set the
+`HAB_DEVICE` environment variable. CoreML is only used when you ask for it. It compiles models slowly and wasn't
+faster than the CPU on the models we tested. See [Tune Processing](tune-processing.md#batch-size-and-gpus) for
+choosing a batch size on a GPU.
+
+!!! note "Upgrading from a version before 0.17"
+    GPU support changed in 0.17: the CUDA libraries are no longer installed by default. See
+    [Upgrade to 0.17](upgrade-to-0-17.md).
 
 ## Updating
 
@@ -41,6 +76,9 @@ We follow [semantic versioning](https://semver.org/).
     ```bash
     pip install --upgrade habitat-mapper
     ```
+
+If you installed an extra such as `[cuda]`, include it when you upgrade with pip:
+`pip install --upgrade "habitat-mapper[cuda]"`.
 
 ## Next steps
 

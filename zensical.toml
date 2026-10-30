@@ -26,6 +26,7 @@ nav = [
     ] },
     { "Use from Python" = "guides/python.md" },
     { "Install for Python Users" = "guides/install-advanced.md" },
+    { "Upgrade to 0.17" = "guides/upgrade-to-0-17.md" },
     { "Upgrade from Kelp-O-Matic" = "guides/upgrade-from-kom.md" },
   ] },
   { "Models" = [

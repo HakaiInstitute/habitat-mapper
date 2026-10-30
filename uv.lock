@@ -878,7 +878,8 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin'" },
-    { name = "onnxruntime-gpu", extra = ["cuda", "cudnn"], marker = "sys_platform != 'darwin'" },
+    { name = "onnxruntime-ep-webgpu" },
+    { name = "onnxruntime-gpu", marker = "sys_platform != 'darwin'" },
     { name = "opencv-python-headless" },
     { name = "platformdirs" },
     { name = "pydantic" },
@@ -891,6 +892,11 @@ dependencies = [
     { name = "xarray" },
     { name = "xarray-spatial", version = "0.5.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "xarray-spatial", version = "0.10.20", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
+[package.optional-dependencies]
+cuda = [
+    { name = "onnxruntime-gpu", extra = ["cuda", "cudnn"], marker = "sys_platform != 'darwin'" },
 ]
 
 [package.dev-dependencies]
@@ -934,7 +940,9 @@ requires-dist = [
     { name = "numba", specifier = ">=0.62" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "onnxruntime", marker = "sys_platform == 'darwin'", specifier = ">=1.31.1" },
-    { name = "onnxruntime-gpu", extras = ["cuda", "cudnn"], marker = "sys_platform != 'darwin'", specifier = ">=1.31.1" },
+    { name = "onnxruntime-ep-webgpu", specifier = ">=0.4.0,<0.6" },
+    { name = "onnxruntime-gpu", marker = "sys_platform != 'darwin'", specifier = ">=1.31.1" },
+    { name = "onnxruntime-gpu", extras = ["cuda", "cudnn"], marker = "sys_platform != 'darwin' and extra == 'cuda'", specifier = ">=1.31.1" },
     { name = "opencv-python-headless", specifier = ">=4.11.0.86" },
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "pydantic", specifier = ">=2.11.7" },
@@ -945,6 +953,7 @@ requires-dist = [
     { name = "xarray", specifier = ">=2025.6.1" },
     { name = "xarray-spatial", specifier = ">=0.5.3" },
 ]
+provides-extras = ["cuda"]
 
 [package.metadata.requires-dev]
 conversion = [
@@ -2680,6 +2689,18 @@ wheels = [
 ]
 
 [[package]]
+name = "onnxruntime-ep-webgpu"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c3/9f/1e09865bbe4c9202ff1334545535be32dfdbeffc46e7d4c36c5de67ffafe/onnxruntime_ep_webgpu-0.4.0-py3-none-macosx_14_0_universal2.whl", hash = "sha256:8d0a91d44b43d931c3068b9134aed9770f27803e353c2b58c93e1700bb68bcca", size = 5200679, upload-time = "2026-09-22T17:08:33.577Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/ca/00c70322c19913c81a6bb2239aca83781b97a818b55c2ec3d25cec72dc4c/onnxruntime_ep_webgpu-0.4.0-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:17f660db53b1a509c63e721ac6784a2daa1c4e91a968523ee9986505ee5b0a55", size = 6096222, upload-time = "2026-09-22T17:08:35.569Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/96/2a18a45079250afcd825687aef2895de266d5abc1cff9f52d2dede7598f2/onnxruntime_ep_webgpu-0.4.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:5d8c961eda91a88961cad1fb7621f389f006b18497d6ea9ecf96f729f066cbfb", size = 6892120, upload-time = "2026-09-22T17:08:38.168Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/a4/c98a9e9433b3eeb576977b26c5c1cd0364f15ba9d198bb16101e7563ab06/onnxruntime_ep_webgpu-0.4.0-py3-none-win_amd64.whl", hash = "sha256:7db646669d1a2390551da675115ea125e68cb3d4d2c3a2d6e463372bf8d6ea87", size = 13149847, upload-time = "2026-09-22T17:08:40.238Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/35/e1b1b12e596354d05af43cea09cd9fbd8a24b6df3853c527307b5cfb8d4b/onnxruntime_ep_webgpu-0.4.0-py3-none-win_arm64.whl", hash = "sha256:a9586f6744370776059edd794c11bca2f563258a5bd2707864aefff31d3af39f", size = 14194630, upload-time = "2026-09-22T17:08:42.99Z" },
+]
+
+[[package]]
 name = "onnxruntime-gpu"
 version = "1.31.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2967,11 +2988,11 @@ wheels = [
 
 [[package]]
 name = "platformdirs"
-version = "4.13.7"
+version = "4.14.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/35/e9/bf409046a91b6a9ca652e9b0ac3c39481674f6774e23e58b52315516099a/platformdirs-4.13.7.tar.gz", hash = "sha256:f7f351c027d6632c30471124e1fdb6ac0fef9ccc5cbac1b34cb333431b1fc3e1", size = 63906, upload-time = "2026-10-28T05:49:31.898Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/28/1c058a9143d2304b3078f8dadcbb9dc27f7d3581b5d05157c84869c4cc0d/platformdirs-4.14.0.tar.gz", hash = "sha256:83f009c1e8c5fc36869b5171755b291887bd2cade7965233cdfabd23d754720b", size = 70387, upload-time = "2026-10-28T18:27:30.973Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/46/ff/8ed4a836cbf7de39708a2d305d6b67575990908d072bc3565dd8ad71748e/platformdirs-4.13.7-py3-none-any.whl", hash = "sha256:47664602fbecad0a6efa561fb690d20dbc26875fe8aedf65ba362935df619bbb", size = 33111, upload-time = "2026-10-28T05:49:30.545Z" },
+    { url = "https://files.pythonhosted.org/packages/69/2b/887969ef4bb53e0cb271dc7c3f4a73d50c5d58bb88aeaae311e3340cd57e/platformdirs-4.14.0-py3-none-any.whl", hash = "sha256:1dadfc59a8a5d7565b3d9270ae8fa71c065595352c4277b41c11ee6c222c4b91", size = 35259, upload-time = "2026-10-28T18:27:29.659Z" },
 ]
 
 [[package]]

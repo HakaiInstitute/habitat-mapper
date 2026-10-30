@@ -7,6 +7,7 @@ Common commands on one page. For every option, see the [CLI reference](cli.md). 
 | Task                              | Command                                                      |
 |-----------------------------------|--------------------------------------------------------------|
 | Install                           | `pip install habitat-mapper`                                 |
+| …with CUDA, for NVIDIA GPUs       | `pip install "habitat-mapper[cuda]"` (RTX 20 series or newer) |
 | Upgrade                           | `pip install --upgrade habitat-mapper`                       |
 | Check version                     | `hab --version`                                              |
 | List models                       | `hab models`                                                 |
@@ -15,9 +16,10 @@ Common commands on one page. For every option, see the [CLI reference](cli.md). 
 | …with a specific revision         | `hab segment kelp-rgb input.tif output.tif --rev 20240722`   |
 | …with bands stored B, G, R, NIR   | `hab segment kelp-rgbi input.tif output.tif -b 3 -b 2 -b 1 -b 4` |
 | …in larger tiles (fewer seams)    | `hab segment kelp-rgb input.tif output.tif --crop-size 3200` |
-| …faster on a GPU                  | `hab segment kelp-rgb input.tif output.tif --batch-size 4`   |
 | …with smoothing                   | `hab segment kelp-rgb input.tif output.tif --blur 5 --morph 3` |
+| …on a specific device             | `hab segment kelp-rgb input.tif output.tif --device cpu`     |
 | …without progress bars            | `hab segment kelp-rgb input.tif output.tif --quiet`          |
+| List the devices models can run on | `hab devices`                                               |
 | Clear the model cache             | `hab clean`                                                  |
 
 Flags can also be written in long form: `hab segment -m kelp-rgb -i input.tif -o output.tif`.

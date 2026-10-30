@@ -1,6 +1,6 @@
 [project]
 name = "habitat-mapper"
-version = "0.14.1"
+version = "0.17.0"
 description = "Habitat segmentation with AI"
 readme = "README.md"
 authors = [{ name = "Taylor Denouden", email = "taylor.denouden@hakai.org" }]
@@ -15,7 +15,9 @@ dependencies = [
     "numba>=0.62",
     "numpy>=2.2.6",
     "onnxruntime>=1.31.1 ; platform_system == 'Darwin'",
-    "onnxruntime-gpu[cuda, cudnn]>=1.31.1 ; platform_system != 'Darwin'",
+    # The plugin is built against a specific ONNX Runtime API, so new releases are only allowed once tested
+    "onnxruntime-ep-webgpu>=0.4.0,<0.6",
+    "onnxruntime-gpu>=1.31.1 ; platform_system != 'Darwin'",
     "opencv-python-headless>=4.11.0.86",
     "platformdirs>=4.3.8",
     "pydantic>=2.11.7",
@@ -25,6 +27,12 @@ dependencies = [
     "rioxarray>=0.19.0",
     "xarray>=2025.6.1",
     "xarray-spatial>=0.5.3",
+]
+
+[project.optional-dependencies]
+# CUDA 13, for NVIDIA RTX 20 series or newer GPUs with driver R580 or newer. Other GPUs use WebGPU
+cuda = [
+    "onnxruntime-gpu[cuda, cudnn]>=1.31.1 ; platform_system != 'Darwin'",
 ]
 
 [dependency-groups]
@@ -61,7 +69,7 @@ examples = [
 Documentation = "https://habitat-mapper.readthedocs.io"
 
 [project.scripts]
-hab = "habitat_mapper.main:app"
+hab = "habitat_mapper.main:main"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14"]
@@ -118,6 +126,7 @@ strict = true
 module = [
     "dask.*",
     "onnxruntime.*",
+    "onnxruntime_ep_webgpu.*",
     "rasterio.*"
 ]
 ignore_missing_imports = true
