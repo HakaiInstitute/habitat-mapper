@@ -30,7 +30,7 @@ with warnings.catch_warnings():
             raise ImportError(
                 "ONNX Runtime could not be loaded. Install the Microsoft Visual C++ Redistributable from "
                 "https://aka.ms/vs/17/release/vc_redist.x64.exe and try again."
-            ) from e
+            ) from None
         raise
 
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidProtobuf, NoSuchFile
@@ -64,7 +64,11 @@ _UNAVAILABLE_HINTS = {
         f"available on Windows and Linux. Install them with {_CUDA_INSTALL}."
     ),
     "coreml": "CoreML is only available on macOS.",
-    "webgpu": "It needs a GPU with a DirectX 12 (Windows), Vulkan (Linux) or Metal (macOS) driver.",
+    "webgpu": (
+        "It needs a hardware GPU with a DirectX 12 (Windows), Vulkan (Linux) or Metal (macOS) driver. Software "
+        "renderers, such as the one in virtual machines without GPU access, aren't used because they're slower than "
+        "the CPU."
+    ),
 }
 
 # Why a device that was asked for isn't available, found by find_accelerators. Used in place of _UNAVAILABLE_HINTS
@@ -614,6 +618,8 @@ def find_accelerators() -> tuple[Accelerator, ...]:
     webgpu_without_driver = False
     # Only hardware GPUs: ORT offers a CPU-backed WebGPU device when ORT_WEBGPU_EP_ALLOW_SOFTWARE_ADAPTER is set
     webgpu_devices = tuple(d for d in ep_devices.get(webgpu_ep or "", []) if d.device.type.name == "GPU")
+    if webgpu_ep and not webgpu_devices:
+        logger.debug("The WebGPU plugin found no hardware GPU")
     if webgpu_ep and webgpu_devices:
         if has_hardware_gpu_for_webgpu(webgpu_devices):
             webgpu_device = _preferred_webgpu_device(webgpu_devices)
