@@ -9,13 +9,14 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import rasterio
-import rioxarray as rxr
-import xarray as xr
 from defusedxml.ElementTree import parse as parse_xml
 from loguru import logger
 from rasterio.enums import Resampling
+from rasterio.vrt import WarpedVRT
 
 if TYPE_CHECKING:
+    from affine import Affine
+    from rasterio.crs import CRS
     from rasterio.windows import Window
 
 _FLOAT32_MAX = float(np.finfo(np.float32).max)
@@ -253,7 +254,9 @@ class SAFEReader(ImageReader):
         self._offset = self._get_data_offset()
 
         # Load band data
-        self._stacked: xr.DataArray | None = None
+        self._stacked: np.ndarray | None = None
+        self._crs: CRS | None = None
+        self._transform: Affine | None = None
         self._load_band_data()
 
     def _get_data_offset(self) -> int:
@@ -294,30 +297,33 @@ class SAFEReader(ImageReader):
             band_08 = next(self.safe_dir_path.glob("GRANULE/**/IMG_DATA/**/*_B08_10m.jp2"))
             band_05 = next(self.safe_dir_path.glob("GRANULE/**/IMG_DATA/**/*_B05_20m.jp2"))
 
-            # Open bands as rioxarray DataArrays
-            band_files = [band_02, band_03, band_04, band_08, band_05]
-            band_data: list[xr.DataArray] = [rxr.open_rasterio(b) for b in band_files]  # type: ignore[misc]
+            band_data: list[np.ndarray] = []
+            for band_file in (band_02, band_03, band_04, band_08):
+                with rasterio.open(band_file) as src:
+                    band_data.append(src.read(1))
+                    self._crs, self._transform = src.crs, src.transform
+                    height, width = src.height, src.width
 
-            # Resample 20m band (B05) to match 10m resolution.
-            # Save the original reference so we can close its file handle after reprojection —
-            # accessing .rio creates a circular reference that prevents CPython from immediately
-            # freeing the DataArray and its underlying rasterio file descriptor via refcounting.
-            b05_raw = band_data[-1]
-            band_data[-1] = b05_raw.rio.reproject_match(band_data[0], resampling=Resampling.nearest)
-            b05_raw.close()
+            # Resample 20m band (B05) onto the 10m grid
+            with (
+                rasterio.open(band_05) as src,
+                WarpedVRT(
+                    src,
+                    crs=self._crs,
+                    transform=self._transform,
+                    width=width,
+                    height=height,
+                    resampling=Resampling.nearest,
+                ) as vrt,
+            ):
+                band_data.append(vrt.read(1))
 
-            # Stack bands along the band dimension
-            stacked = xr.concat(band_data, dim="band")  # type: ignore[misc]
-
-            # Close source DataArrays now that their data is loaded into stacked.
-            for bd in band_data:
-                bd.close()
+            stacked = np.stack(band_data)
             del band_data
 
             # Apply data offset
             if self._offset > 0:
-                stacked = stacked.astype(np.int32) - self._offset
-                stacked = stacked.clip(0).astype(np.uint16)
+                stacked = (stacked.astype(np.int32) - self._offset).clip(0).astype(np.uint16)
 
             self._stacked = stacked
         except StopIteration as e:
@@ -335,7 +341,7 @@ class SAFEReader(ImageReader):
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
-        return int(self._stacked.rio.height)
+        return int(self._stacked.shape[1])
 
     @property
     def width(self) -> int:
@@ -349,7 +355,7 @@ class SAFEReader(ImageReader):
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
-        return int(self._stacked.rio.width)
+        return int(self._stacked.shape[2])
 
     @property
     def num_bands(self) -> int:
@@ -363,7 +369,7 @@ class SAFEReader(ImageReader):
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
-        return int(self._stacked.sizes["band"])
+        return int(self._stacked.shape[0])
 
     @property
     def dtype(self) -> str:
@@ -387,11 +393,11 @@ class SAFEReader(ImageReader):
             RuntimeError: If band data has not been loaded.
 
         Returns:
-            CRS object from xarray dataset.
+            CRS object.
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
-        return self._stacked.rio.crs
+        return self._crs
 
     @property
     def transform(self) -> object:
@@ -405,7 +411,7 @@ class SAFEReader(ImageReader):
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
-        return self._stacked.rio.transform()
+        return self._transform
 
     def read_window(
         self,
@@ -432,7 +438,7 @@ class SAFEReader(ImageReader):
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
 
-        # Extract the requested window from the xarray
+        # Extract the requested window from the stacked bands
         row_start = window.row_off
         row_end = window.row_off + window.height
         col_start = window.col_off
@@ -451,10 +457,7 @@ class SAFEReader(ImageReader):
 
             # Read the clipped region
             if row_start_clipped < row_end_clipped and col_start_clipped < col_end_clipped:
-                data = self._stacked.isel(
-                    y=slice(row_start_clipped, row_end_clipped),
-                    x=slice(col_start_clipped, col_end_clipped),
-                ).values
+                data = self._stacked[:, row_start_clipped:row_end_clipped, col_start_clipped:col_end_clipped]
             else:
                 # Completely outside bounds
                 data = np.full((self.num_bands, 0, 0), fill_value, dtype=self.dtype)
@@ -476,10 +479,7 @@ class SAFEReader(ImageReader):
             # Strict bounds checking
             if row_start < 0 or row_end > img_height or col_start < 0 or col_end > img_width:
                 raise IndexError(f"Window {window} is outside image bounds ({img_height}x{img_width})")
-            data = self._stacked.isel(
-                y=slice(row_start, row_end),
-                x=slice(col_start, col_end),
-            ).values
+            data = self._stacked[:, row_start:row_end, col_start:col_end]
 
         # Handle band ordering
         if band_order is not None:
@@ -498,6 +498,4 @@ class SAFEReader(ImageReader):
 
     def close(self) -> None:
         """Close the reader and release resources."""
-        if self._stacked is not None:
-            self._stacked.close()
-            self._stacked = None
+        self._stacked = None
