@@ -45,10 +45,12 @@ Download the installer for your computer from the
 
 ## 3. Segment your images
 
-1. Choose a **Model**. See [Models](../models/index.md) to pick the right one for your imagery.
-2. Click **Add images…** to add GeoTIFFs, or **Add SAFE folder…** to add a Sentinel-2 L2A `.SAFE` folder. You can
-   add as many as you like.
-3. Choose an **Output folder**. Each result is saved there as `<image name>_<model>.tif`.
+1. Choose a **Model**. See [Models](../models/index.md) to pick the right one for your imagery. The newest
+   **Revision** of the model is chosen for you.
+2. Click **Add images…** to add GeoTIFFs. For the `kelp-skema` model, click **Add SAFE folder…** instead, to add
+   Sentinel-2 L2A `.SAFE` folders. You can add as many as you like.
+3. Choose an **Output folder**. Each result is saved there named after the image, model and revision, e.g.
+   `survey_kelp_rgb_20240722.tif`.
 4. Click **Run**.
 
 The model downloads the first time you use it, which needs an internet connection. To work offline later, download
@@ -60,8 +62,8 @@ While it runs, the bar at the bottom shows progress through the current image an
 Select an image in the list to preview it, with its result on top once it's done. Scroll to zoom, drag to pan, and
 double click to fit the image again. The **Result opacity** slider fades the result in and out.
 
-**Advanced options** has the same settings as [`hab segment`](../reference/cli.md), such as band order and the
-[processing options](../guides/tune-processing.md). Leave them alone unless you need them.
+**Advanced options** has the tile size, band order and filter settings of [`hab segment`](../reference/cli.md).
+[Tune Processing](../guides/tune-processing.md) explains them. Leave them alone unless you need them.
 
 Then [view the results in GIS](view-results.md).
 
