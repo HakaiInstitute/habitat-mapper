@@ -72,7 +72,9 @@ class _LiveObserver:
 
     def batch_started(self, windows: Sequence[Window]) -> None:
         if self._overlay is not None:
-            self._worker.tiles_started.emit(self._row, [self._overlay.to_preview(w) for w in windows])
+            for window in windows:
+                self._overlay.mark_pending(window)
+            self._worker.tiles_started.emit(self._row, [self._overlay.tile_to_preview(w) for w in windows])
 
     def written(self, window: Window, data: np.ndarray) -> None:
         if self._overlay is not None:
@@ -88,7 +90,7 @@ class SegmentWorker(QObject):
     stage = Signal(str)
     device = Signal(str)
     live_started = Signal(int, object)  # Queue row, LiveOverlay that fills in as the image is processed
-    tiles_started = Signal(int, object)  # Queue row, tiles being processed in LiveOverlay pixels
+    tiles_started = Signal(int, object)  # Queue row, tiles being processed in LiveOverlay pixels, past its edges too
     finished = Signal()
 
     def __init__(self, model: ONNXModel, jobs: list[tuple[int, Path, Path]], options: dict[str, Any]) -> None:

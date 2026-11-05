@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 # Largest dimension of previews, in pixels
 PREVIEW_SIZE = 2048
+# Haze over the parts of a live preview that the model has seen but that aren't finished yet
+PENDING_RGBA = np.array([255, 255, 255, 90], dtype=np.uint8)
 
 # Colours for class values 1-10 of a segmentation. Class 0 and nodata are transparent
 CLASS_COLOURS = np.array(
@@ -133,6 +135,9 @@ def read_output_preview(path: Path, max_size: int = PREVIEW_SIZE) -> np.ndarray:
 class LiveOverlay:
     """Preview of a result that fills in as each part of it is written.
 
+    Tiles overlap, and the model's predictions where they overlap are blended, so most of a tile isn't finished until
+    the tiles to its right and below have been processed too. Those parts are covered in a haze until they are written.
+
     Parts are drawn by the processing thread and read by the UI thread. Reading a part-drawn tile only shows it a
     moment early, so there's no locking.
 
@@ -154,19 +159,40 @@ class LiveOverlay:
         self._scale_x = preview_width / width
         self._nodata = nodata
         self.rgba = np.zeros((preview_height, preview_width, 4), dtype=np.uint8)
+        self._written = np.zeros((preview_height, preview_width), dtype=bool)
+
+    def tile_to_preview(self, window: Window) -> tuple[int, int, int, int]:
+        """Scale a window of the image to the preview, including any part past the edge of the image.
+
+        Returns:
+            Left, top, right and bottom of the window in preview pixels.
+        """
+        left = math.floor(window.col_off * self._scale_x)
+        top = math.floor(window.row_off * self._scale_y)
+        right = max(math.ceil((window.col_off + window.width) * self._scale_x), left + 1)
+        bottom = max(math.ceil((window.row_off + window.height) * self._scale_y), top + 1)
+        return left, top, right, bottom
 
     def to_preview(self, window: Window) -> tuple[int, int, int, int]:
-        """Scale a window of the image to the preview, covering at least one preview pixel.
+        """Scale the part of a window inside the image to the preview, covering at least one preview pixel.
 
         Returns:
             Left, top, right and bottom of the window in preview pixels.
         """
         height, width = self.rgba.shape[:2]
-        left = min(math.floor(window.col_off * self._scale_x), width - 1)
-        top = min(math.floor(window.row_off * self._scale_y), height - 1)
-        right = min(max(math.ceil((window.col_off + window.width) * self._scale_x), left + 1), width)
-        bottom = min(max(math.ceil((window.row_off + window.height) * self._scale_y), top + 1), height)
-        return left, top, right, bottom
+        left, top, right, bottom = self.tile_to_preview(window)
+        left, top = min(left, width - 1), min(top, height - 1)
+        return left, top, max(min(right, width), left + 1), max(min(bottom, height), top + 1)
+
+    def mark_pending(self, window: Window) -> None:
+        """Cover the parts of a tile that aren't finished in a haze.
+
+        Args:
+            window: A tile the model is about to process.
+        """
+        left, top, right, bottom = self.to_preview(window)
+        region = self.rgba[top:bottom, left:right]
+        region[~self._written[top:bottom, left:right]] = PENDING_RGBA
 
     def paste(self, window: Window, classes: np.ndarray) -> None:
         """Draw a part of the result.
@@ -178,3 +204,4 @@ class LiveOverlay:
         left, top, right, bottom = self.to_preview(window)
         small = cv2.resize(classes, (right - left, bottom - top), interpolation=cv2.INTER_NEAREST)
         self.rgba[top:bottom, left:right] = colourise(small, self._nodata)
+        self._written[top:bottom, left:right] = True

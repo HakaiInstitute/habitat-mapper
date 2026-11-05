@@ -15,6 +15,9 @@ if TYPE_CHECKING:
 _ZOOM_STEP = 1.25
 _TILE_PEN = QPen(QColor(255, 255, 255, 220), 2)
 _TILE_PEN.setCosmetic(True)  # Same width at every zoom level
+# For the part of a tile past the edge of the image, which the model sees as padding
+_OFF_IMAGE_PEN = QPen(_TILE_PEN)
+_OFF_IMAGE_PEN.setStyle(Qt.PenStyle.DashLine)
 
 
 def _to_pixmap(array: np.ndarray) -> QPixmap:
@@ -73,7 +76,7 @@ class PreviewCanvas(QGraphicsView):
         )
 
     def set_tiles(self, tiles: list[tuple[int, int, int, int]]) -> None:
-        """Outline the tiles being processed.
+        """Outline the tiles being processed, dashed where they extend past the edge of the image.
 
         Args:
             tiles: Left, top, right and bottom of each tile in overlay pixels. Empty to remove the outlines.
@@ -81,12 +84,20 @@ class PreviewCanvas(QGraphicsView):
         for item in self._tiles:
             self.scene().removeItem(item)
         self._tiles = []
+        overlay = self._overlay.pixmap()
         for left, top, right, bottom in tiles:
-            # A child of the overlay, so it is scaled the same way, but not faded with it
-            item = QGraphicsRectItem(left, top, right - left, bottom - top, self._overlay)
-            item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresParentOpacity)
-            item.setPen(_TILE_PEN)
-            self._tiles.append(item)
+            inside = (left, top, min(right, overlay.width()), min(bottom, overlay.height()))
+            if inside[2:] != (right, bottom):
+                self._add_outline((left, top, right, bottom), _OFF_IMAGE_PEN)
+            self._add_outline(inside, _TILE_PEN)
+
+    def _add_outline(self, rect: tuple[int, int, int, int], pen: QPen) -> None:
+        left, top, right, bottom = rect
+        # A child of the overlay, so it is scaled the same way, but not faded with it
+        item = QGraphicsRectItem(left, top, right - left, bottom - top, self._overlay)
+        item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresParentOpacity)
+        item.setPen(pen)
+        self._tiles.append(item)
 
     def set_overlay_opacity(self, opacity: float) -> None:
         """Set how opaque the overlay is, from 0 to 1."""

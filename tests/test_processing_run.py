@@ -105,6 +105,6 @@ def test_observer_sees_every_batch_and_the_whole_result(tmp_path: Path) -> None:
 
     assert observer.size == (CROP_SIZE * 2, CROP_SIZE * 3)
     assert observer.batches
-    assert all(0 <= w.row_off and w.row_off + w.height <= CROP_SIZE * 2 for b in observer.batches for w in b)
+    assert all(w.width == w.height == CROP_SIZE for b in observer.batches for w in b)
     with rasterio.open(out_path) as src:
         np.testing.assert_array_equal(observer.result, src.read(1))
