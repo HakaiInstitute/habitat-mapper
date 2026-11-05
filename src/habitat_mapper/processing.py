@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import cv2
 import numpy as np
@@ -19,7 +19,7 @@ from habitat_mapper.progress import NullProgressReporter, ProgressReporter, Rich
 from habitat_mapper.utils import batched
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterable
+    from collections.abc import Callable, Generator, Iterable, Sequence
 
     from habitat_mapper.model import ONNXModel
     from habitat_mapper.reader import ImageReader
@@ -27,6 +27,22 @@ if TYPE_CHECKING:
 
 class ProcessingCancelled(Exception):  # noqa: N818
     """Raised when processing is cancelled before it finishes."""
+
+
+class ProcessingObserver(Protocol):
+    """Follows an image as it is processed, e.g. to preview the result while it is made."""
+
+    def image_started(self, height: int, width: int) -> None:
+        """Called once the image is opened, with its size in pixels."""
+        ...
+
+    def batch_started(self, windows: Sequence[Window]) -> None:
+        """Called before each batch with the parts of the image its tiles cover."""
+        ...
+
+    def written(self, window: Window, data: np.ndarray) -> None:
+        """Called with each part of the result as it is written, before the final blur and morphological filters."""
+        ...
 
 
 @dataclass
@@ -100,6 +116,7 @@ class ImageProcessor:
         img_path: str | Path,
         output_path: str | Path,
         cancel: Callable[[], bool] | None = None,
+        observer: ProcessingObserver | None = None,
     ) -> None:
         """Process a raster file with tiled segmentation.
 
@@ -107,6 +124,7 @@ class ImageProcessor:
             img_path: Path to input raster or SAFE directory
             output_path: Path to output segmentation raster
             cancel: Called before each batch. If it returns True, processing stops and the partial output is deleted.
+            observer: Told about each batch and each part of the result as it is written.
 
         Raises:
             ProcessingCancelled: If cancel returned True.
@@ -114,7 +132,7 @@ class ImageProcessor:
         # The model config is shared by every run, so don't keep the pixel range detected from this image
         max_pixel_value = self.model.cfg.max_pixel_value
         try:
-            self._run(img_path, output_path, cancel)
+            self._run(img_path, output_path, cancel, observer)
         except ProcessingCancelled:
             Path(output_path).unlink(missing_ok=True)
             raise
@@ -126,6 +144,7 @@ class ImageProcessor:
         img_path: str | Path,
         output_path: str | Path,
         cancel: Callable[[], bool] | None,
+        observer: ProcessingObserver | None,
     ) -> None:
         """Process a raster file with tiled segmentation. See run.
 
@@ -140,6 +159,8 @@ class ImageProcessor:
             # Get raster properties
             height, width = reader.height, reader.width
             dtype = reader.dtype
+            if observer is not None:
+                observer.image_started(height, width)
 
             # For TIFF, we can get the profile; for other formats, create a minimal one
             try:
@@ -196,6 +217,9 @@ class ImageProcessor:
                     for window_batch in window_batches:
                         if cancel is not None and cancel():
                             raise ProcessingCancelled
+                        if observer is not None:
+                            clipped = (self._clip_window_to_image_bounds(w, height, width) for w in window_batch)
+                            observer.batch_started([w for w in clipped if w is not None])
 
                         # Read tile data from source raster
                         input_batch = self._load_batch(reader, window_batch)
@@ -213,6 +237,8 @@ class ImageProcessor:
                                     dtype=np.uint8,
                                 )
                                 dst.write(data, 1, window=clipped_window)
+                                if observer is not None:
+                                    observer.written(clipped_window, data)
 
                         # Remove blank tiles from batch
                         window_batch = tuple(w for w, b in zip(window_batch, blank) if not b)
@@ -263,6 +289,8 @@ class ImageProcessor:
                             )
                             data = self.model._postprocess(data)
                             dst.write(data, 1, window=write_window)
+                            if observer is not None:
+                                observer.written(write_window, data)
 
                         task.update(advance=1)
 
