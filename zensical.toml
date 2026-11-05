@@ -9,6 +9,7 @@ nav = [
   { "Home" = "index.md" },
   { "Get Started" = [
     "get-started/index.md",
+    { "Desktop App" = "get-started/desktop-app.md" },
     { "1. Using the Terminal" = "get-started/terminal.md" },
     { "2. Install" = "get-started/install.md" },
     { "3. Your First Segmentation" = "get-started/first-segmentation.md" },
