@@ -59,6 +59,12 @@ models ahead of time from **Tools → Models…**.
 While it runs, the bar at the bottom shows progress through the current image and the hardware it's running on. Click
 **Cancel** to stop after the current tiles. If an image fails, the others still run; hover over its status to see why.
 
+While an image is processed, the preview shows its result filling in. The white box is the tile the model is
+looking at, dashed where it extends past the edge of your image. Tiles overlap, and predictions where they overlap
+are blended so that tile edges don't show, so most of a tile isn't finished until the tiles to its right and below
+are done. Those parts are covered in a light haze until then. The finished result replaces the preview at the end,
+with the median blur and morphological filter applied, if you turned them on.
+
 Select an image in the list to preview it, with its result on top once it's done. Scroll to zoom, drag to pan, and
 double click to fit the image again. The **Result opacity** slider fades the result in and out.
 
