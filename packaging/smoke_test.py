@@ -1,8 +1,9 @@
-"""Check that a frozen `hab` executable can segment an image.
+"""Check that a frozen build can segment an image, and that the desktop app starts.
 
-Usage: python packaging/smoke_test.py dist/habitat-mapper/hab
+Usage: python packaging/smoke_test.py dist/habitat-mapper/hab [dist/habitat-mapper/Habitat-Mapper]
 """
 
+import os
 import subprocess  # noqa: S404
 import sys
 import tempfile
@@ -16,7 +17,7 @@ SIZE = 1024
 
 
 def main() -> None:
-    """Segment a random RGB GeoTIFF with the frozen executable and check the output.
+    """Segment a random RGB GeoTIFF with the frozen `hab` and check the output, then start and quit the app.
 
     Raises:
         SystemExit: If the executable fails or writes an unexpected output.
@@ -46,6 +47,10 @@ def main() -> None:
         with rasterio.open(out_path) as src:
             if (src.height, src.width) != (SIZE, SIZE):
                 raise SystemExit(f"Output is {src.height}x{src.width}, expected {SIZE}x{SIZE}")
+
+    if len(sys.argv) > 2:
+        gui = Path(sys.argv[2]).resolve()
+        subprocess.run([gui], env={**os.environ, "HAB_GUI_SMOKE_TEST": "1"}, check=True, timeout=120)  # noqa: S603
     print("Smoke test passed")  # noqa: T201
 
 
