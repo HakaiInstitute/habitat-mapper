@@ -141,9 +141,17 @@ class _Call(QRunnable):
             result = self.fn()
         except Exception as e:  # noqa: BLE001
             logger.opt(exception=e).debug("Background task failed")
-            self.signals.failed.emit(str(e))
+            self._emit(self.signals.failed, str(e))
         else:
-            self.signals.done.emit(result)
+            self._emit(self.signals.done, result)
+
+    @staticmethod
+    def _emit(signal: SignalInstance, value: object) -> None:
+        try:
+            signal.emit(value)
+        except RuntimeError:
+            # The app closed while the task was running, so there's nothing left to tell
+            pass
 
 
 _running: set[_Call] = set()
