@@ -18,14 +18,19 @@ from tests.test_blank_tile_skipping import _write_raster
 
 def test_output_path_for_file_and_safe_folder() -> None:
     out = Path("/out")
-    assert output_path_for(Path("/data/survey.tif"), out, "kelp-rgb") == out / "survey_kelp-rgb.tif"
-    assert output_path_for(Path("/data/S2B_MSIL2A_X.SAFE"), out, "kelp-skema") == out / "S2B_MSIL2A_X_kelp-skema.tif"
+    assert (
+        output_path_for(Path("/data/survey.tif"), out, "kelp-rgb", "20240722") == out / "survey_kelp_rgb_20240722.tif"
+    )
+    assert (
+        output_path_for(Path("/data/S2B_MSIL2A_X.SAFE"), out, "kelp-skema", "20261014")
+        == out / "S2B_MSIL2A_X_kelp_skema_20261014.tif"
+    )
 
 
 def test_existing_outputs(tmp_path: Path) -> None:
-    (tmp_path / "a_kelp-rgb.tif").touch()
+    (tmp_path / "a_kelp_rgb_20240722.tif").touch()
     items = [BatchItem(Path("/data/a.tif")), BatchItem(Path("/data/b.tif"))]
-    assert existing_outputs(items, tmp_path, "kelp-rgb") == [tmp_path / "a_kelp-rgb.tif"]
+    assert existing_outputs(items, tmp_path, "kelp-rgb", "20240722") == [tmp_path / "a_kelp_rgb_20240722.tif"]
 
 
 def test_input_preview_is_downsampled_rgb(tmp_path: Path) -> None:
