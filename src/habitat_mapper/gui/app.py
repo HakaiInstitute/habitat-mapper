@@ -607,7 +607,7 @@ def _ensure_std_streams() -> None:
     """
     if sys.stdout is not None and sys.stderr is not None:
         return
-    devnull = open(os.devnull, "w")  # noqa: SIM115
+    devnull = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
     for fd in (1, 2):
         try:
             os.fstat(fd)
