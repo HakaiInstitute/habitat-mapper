@@ -46,6 +46,7 @@ from habitat_mapper.gui.models_dialog import ModelsDialog, is_downloaded
 from habitat_mapper.gui.preview import read_input_preview, read_output_preview
 from habitat_mapper.gui.updates import newer_release
 from habitat_mapper.gui.worker import SegmentWorker, run_in_background
+from habitat_mapper.reader import SAFEReader
 from habitat_mapper.registry import model_registry
 
 if TYPE_CHECKING:
@@ -61,6 +62,27 @@ class _LogBridge(QObject):
     """Passes log messages from any thread to the log pane."""
 
     message = Signal(str)
+
+
+class _OddSpinBox(QSpinBox):
+    """Kernel size for a filter, which must be odd, or 0 to turn the filter off."""
+
+    def __init__(self) -> None:
+        """Create the spin box, starting at off."""
+        super().__init__()
+        self.setRange(0, 99)
+        self.setSpecialValueText("Off")
+
+    def stepBy(self, steps: int) -> None:  # noqa: N802
+        """Step through 0 (off), 3, 5, 7 and so on. A kernel size of 1 has no effect, so it is skipped."""
+        value = self.value()
+        for _ in range(abs(steps)):
+            # Values typed in can be even, so step to the next odd number either way
+            if steps > 0:
+                value = 3 if value < 3 else value + (2 if value % 2 else 1)
+            else:
+                value = 0 if value <= 3 else value - (2 if value % 2 else 1)
+        self.setValue(min(value, self.maximum()))
 
 
 class MainWindow(QMainWindow):
@@ -88,15 +110,13 @@ class MainWindow(QMainWindow):
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
-        for text, slot, shortcut in [
-            ("Add images…", self._add_images, QKeySequence.StandardKey.Open),
-            ("Add Sentinel-2 SAFE folder…", self._add_safe_folder, None),
-        ]:
-            action = QAction(text, self)
-            action.triggered.connect(slot)
-            if shortcut is not None:
-                action.setShortcut(shortcut)
-            file_menu.addAction(action)
+        self._add_images_action = QAction("Add images…", self)
+        self._add_images_action.setShortcut(QKeySequence.StandardKey.Open)
+        self._add_images_action.triggered.connect(self._add_images)
+        self._add_safe_action = QAction("Add Sentinel-2 SAFE folder…", self)
+        self._add_safe_action.triggered.connect(self._add_safe_folder)
+        file_menu.addAction(self._add_images_action)
+        file_menu.addAction(self._add_safe_action)
         file_menu.addSeparator()
         quit_action = QAction("Quit", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
@@ -149,7 +169,8 @@ class MainWindow(QMainWindow):
             cfg = model_registry[name].cfg
             self._model.addItem(f"{name}{' (beta)' if cfg.beta else ''}", name)
             self._model.setItemData(self._model.count() - 1, cfg.description, Qt.ItemDataRole.ToolTipRole)
-        self._model.currentIndexChanged.connect(self._model_changed)
+        self._revision = QComboBox()
+        self._revision.setToolTip("Model version. The newest is chosen by default.")
 
         self._output_dir = QLineEdit()
         self._output_dir.setPlaceholderText("Folder to save results in")
@@ -159,8 +180,13 @@ class MainWindow(QMainWindow):
         output_row.addWidget(self._output_dir, 1)
         output_row.addWidget(browse)
 
+        model_row = QHBoxLayout()
+        model_row.addWidget(self._model, 1)
+        model_row.addWidget(QLabel("Revision"))
+        model_row.addWidget(self._revision)
+
         form = QFormLayout()
-        form.addRow("Model", self._model)
+        form.addRow("Model", model_row)
         form.addRow("Output folder", output_row)
 
         self._queue = QTableWidget(0, 2)
@@ -171,16 +197,21 @@ class MainWindow(QMainWindow):
         self._queue.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._queue.itemSelectionChanged.connect(self._show_selected_preview)
 
+        # Only one of the add buttons is shown, depending on what the model reads
+        self._add_images_button = QPushButton("Add images…")
+        self._add_images_button.clicked.connect(self._add_images)
+        self._add_safe_button = QPushButton("Add SAFE folder…")
+        self._add_safe_button.clicked.connect(self._add_safe_folder)
         queue_buttons = QHBoxLayout()
-        for text, slot in [
-            ("Add images…", self._add_images),
-            ("Add SAFE folder…", self._add_safe_folder),
-            ("Remove", self._remove_selected),
-            ("Clear", self._clear_queue),
-        ]:
+        queue_buttons.addWidget(self._add_images_button)
+        queue_buttons.addWidget(self._add_safe_button)
+        for text, slot in [("Remove", self._remove_selected), ("Clear", self._clear_queue)]:
             button = QPushButton(text)
             button.clicked.connect(slot)
             queue_buttons.addWidget(button)
+
+        self._model.currentIndexChanged.connect(self._model_changed)
+        self._model_changed()
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
@@ -199,29 +230,18 @@ class MainWindow(QMainWindow):
         toggle.setArrowType(Qt.ArrowType.RightArrow)
         toggle.setStyleSheet("QToolButton { border: none; }")
 
-        self._revision = QComboBox()
         self._crop_size = QSpinBox()
         self._crop_size.setRange(0, 8192)
         self._crop_size.setSingleStep(64)
         self._crop_size.setSpecialValueText("Model default")
-        self._batch_size = QSpinBox()
-        self._batch_size.setRange(1, 64)
-        self._blur = QSpinBox()
-        self._blur.setRange(0, 99)
-        self._blur.setSingleStep(2)
-        self._blur.setSpecialValueText("Off")
-        self._morph = QSpinBox()
-        self._morph.setRange(0, 99)
-        self._morph.setSingleStep(2)
-        self._morph.setSpecialValueText("Off")
+        self._blur = _OddSpinBox()
+        self._morph = _OddSpinBox()
         self._band_order = QLineEdit()
         self._band_order.setPlaceholderText("Model default, e.g. 1, 2, 3")
 
         group = QGroupBox()
         form = QFormLayout(group)
-        form.addRow("Revision", self._revision)
         form.addRow("Tile size (even)", self._crop_size)
-        form.addRow("Batch size", self._batch_size)
         form.addRow("Median blur (odd)", self._blur)
         form.addRow("Morphological filter (odd)", self._morph)
         form.addRow("Band order", self._band_order)
@@ -232,7 +252,6 @@ class MainWindow(QMainWindow):
             toggle.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
 
         toggle.toggled.connect(toggled)
-        self._model_changed()
 
         widget = QWidget()
         layout = QVBoxLayout(widget)
@@ -388,12 +407,16 @@ class MainWindow(QMainWindow):
     # Model options
 
     def _model_changed(self) -> None:
-        if not hasattr(self, "_revision"):
-            return
         name = self._model.currentData()
         self._revision.clear()
         revisions = (revision for model_name, revision in model_registry.list_models() if model_name == name)
         self._revision.addItems(sorted(revisions, reverse=True))
+
+        reads_safe = model_registry[name].cfg.reader_cls is SAFEReader
+        self._add_images_button.setVisible(not reads_safe)
+        self._add_images_action.setVisible(not reads_safe)
+        self._add_safe_button.setVisible(reads_safe)
+        self._add_safe_action.setVisible(reads_safe)
 
     def _options(self) -> dict[str, object]:
         """Read the advanced options as ImageProcessor.from_model keyword arguments.
@@ -413,7 +436,8 @@ class MainWindow(QMainWindow):
 
         return {
             "crop_size": crop_size,
-            "batch_size": self._batch_size.value(),
+            # Batches larger than 1 were never faster in testing
+            "batch_size": 1,
             "blur_kernel_size": self._blur.value(),
             "morph_kernel_size": self._morph.value(),
             "band_order": self._parse_band_order(),
@@ -456,11 +480,13 @@ class MainWindow(QMainWindow):
             return
 
         name = self._model.currentData()
-        model = model_registry[name, self._revision.currentText()]
+        revision = self._revision.currentText()
+        model = model_registry[name, revision]
 
         # Images already done with this model and output folder aren't run again
         def is_done(item: BatchItem) -> bool:
-            return item.status is Status.DONE and item.output_path == output_path_for(item.input_path, output_dir, name)
+            output_path = output_path_for(item.input_path, output_dir, name, revision)
+            return item.status is Status.DONE and item.output_path == output_path
 
         pending = [item for item in self._items if not is_done(item)]
         if not pending:
@@ -468,7 +494,7 @@ class MainWindow(QMainWindow):
             return
 
         skip: set[Path] = set()
-        if existing := existing_outputs(pending, output_dir, name):
+        if existing := existing_outputs(pending, output_dir, name, revision):
             answer = QMessageBox.question(
                 self,
                 "Results already exist",
@@ -485,7 +511,7 @@ class MainWindow(QMainWindow):
         for row, item in enumerate(self._items):
             if is_done(item):
                 continue
-            item.output_path = output_path_for(item.input_path, output_dir, name)
+            item.output_path = output_path_for(item.input_path, output_dir, name, revision)
             if item.output_path in skip:
                 self._set_status(row, Status.SKIPPED)
             else:
@@ -552,6 +578,7 @@ class MainWindow(QMainWindow):
         self._run_button.setEnabled(not running)
         self._cancel_button.setEnabled(running)
         self._model.setEnabled(not running)
+        self._revision.setEnabled(not running)
 
     # Preview
 
