@@ -79,6 +79,8 @@ jobs:
       - name: Build the Windows installer
         if: runner.os == 'Windows'
         shell: bash
+        env:
+          MSYS_NO_PATHCONV: 1  # Otherwise Git Bash turns the /D option into a file path
         run: |
           VERSION=$(uv run --no-sync python -c "from importlib.metadata import version; print(version('habitat-mapper'))")
           command -v iscc || choco install innosetup --no-progress -y
