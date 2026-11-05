@@ -37,7 +37,7 @@ class ProcessingObserver(Protocol):
         ...
 
     def batch_started(self, windows: Sequence[Window]) -> None:
-        """Called before each batch with the parts of the image its tiles cover."""
+        """Called before each batch with its tiles, which can extend past the bottom and right of the image."""
         ...
 
     def written(self, window: Window, data: np.ndarray) -> None:
@@ -218,8 +218,7 @@ class ImageProcessor:
                         if cancel is not None and cancel():
                             raise ProcessingCancelled
                         if observer is not None:
-                            clipped = (self._clip_window_to_image_bounds(w, height, width) for w in window_batch)
-                            observer.batch_started([w for w in clipped if w is not None])
+                            observer.batch_started(window_batch)
 
                         # Read tile data from source raster
                         input_batch = self._load_batch(reader, window_batch)

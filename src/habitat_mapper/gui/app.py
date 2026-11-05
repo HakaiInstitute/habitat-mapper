@@ -279,6 +279,16 @@ class MainWindow(QMainWindow):
         self._opacity.valueChanged.connect(lambda value: self._canvas.set_overlay_opacity(value / 100))
         self._canvas.set_overlay_opacity(0.6)
 
+        self._live_legend = QLabel(
+            "White box: the tile being processed, dashed where it extends past the edge of the image. Haze: seen by "
+            "the model, but not finished until the tiles that overlap it to the right and below are processed, since "
+            "overlapping predictions are blended for smooth edges. Along the bottom and right edges, there are no "
+            "tiles left to overlap, so results finish straight away."
+        )
+        self._live_legend.setWordWrap(True)
+        self._live_legend.setStyleSheet("color: palette(placeholder-text);")
+        self._live_legend.hide()
+
         opacity_row = QHBoxLayout()
         opacity_row.addWidget(self._preview_label, 1)
         opacity_row.addWidget(QLabel("Result opacity"))
@@ -288,6 +298,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._canvas, 1)
+        layout.addWidget(self._live_legend)
         layout.addLayout(opacity_row)
         return widget
 
@@ -560,6 +571,7 @@ class MainWindow(QMainWindow):
         if row == self._live_row:
             self._live_timer.stop()
             self._live_row, self._live_overlay, self._live_tiles = None, None, []
+            self._live_legend.hide()
             if self._preview_row == row:
                 self._canvas.set_tiles([])
         # Show the finished result, which has the final filters applied, or clear a cancelled one
@@ -580,7 +592,9 @@ class MainWindow(QMainWindow):
             self._live_tiles = tiles
 
     def _refresh_live_preview(self) -> None:
-        if self._live_overlay is None or self._preview_row != self._live_row:
+        showing_live = self._live_overlay is not None and self._preview_row == self._live_row
+        self._live_legend.setVisible(showing_live)
+        if self._live_overlay is None or not showing_live:
             return
         self._canvas.set_overlay(self._live_overlay.rgba)
         self._canvas.set_tiles(self._live_tiles)
@@ -651,6 +665,7 @@ class MainWindow(QMainWindow):
                 self._preview_label.setText(f"{item.input_path.name} (processing)")
                 self._refresh_live_preview()
             else:
+                self._live_legend.hide()
                 self._preview_label.setText(item.input_path.name + ("" if overlay is not None else " (not run yet)"))
 
         def failed(error: str) -> None:
