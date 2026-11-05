@@ -5,14 +5,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage, QPainter, QPixmap, QTransform
-from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene, QGraphicsView
+from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap, QTransform
+from PySide6.QtWidgets import QGraphicsItem, QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsScene, QGraphicsView
 
 if TYPE_CHECKING:
     import numpy as np
     from PySide6.QtGui import QMouseEvent, QResizeEvent, QWheelEvent
 
 _ZOOM_STEP = 1.25
+_TILE_PEN = QPen(QColor(255, 255, 255, 220), 2)
+_TILE_PEN.setCosmetic(True)  # Same width at every zoom level
 
 
 def _to_pixmap(array: np.ndarray) -> QPixmap:
@@ -38,6 +40,7 @@ class PreviewCanvas(QGraphicsView):
         self._overlay = QGraphicsPixmapItem()
         self.scene().addItem(self._image)
         self.scene().addItem(self._overlay)
+        self._tiles: list[QGraphicsRectItem] = []
         self._fitted = True
 
     def set_images(self, image: np.ndarray | None, overlay: np.ndarray | None = None) -> None:
@@ -48,15 +51,42 @@ class PreviewCanvas(QGraphicsView):
             overlay: (height, width, 4) uint8 RGBA array drawn over the image. Stretched to the image's size.
         """
         self._image.setPixmap(QPixmap() if image is None else _to_pixmap(image))
-        self._overlay.setPixmap(QPixmap())
-        if image is not None and overlay is not None:
-            self._overlay.setPixmap(_to_pixmap(overlay))
-            # Previews of the input and output can differ in size by a pixel or two from rounding
-            self._overlay.setTransform(
-                QTransform.fromScale(image.shape[1] / overlay.shape[1], image.shape[0] / overlay.shape[0])
-            )
+        self.set_overlay(overlay)
+        self.set_tiles([])
         self.scene().setSceneRect(self._image.boundingRect())
         self.fit()
+
+    def set_overlay(self, overlay: np.ndarray | None) -> None:
+        """Replace the overlay, keeping the zoom.
+
+        Args:
+            overlay: (height, width, 4) uint8 RGBA array, stretched to the image's size, or None to remove it.
+        """
+        image = self._image.pixmap()
+        if overlay is None or image.isNull():
+            self._overlay.setPixmap(QPixmap())
+            return
+        self._overlay.setPixmap(_to_pixmap(overlay))
+        # Previews of the input and output can differ in size by a pixel or two from rounding
+        self._overlay.setTransform(
+            QTransform.fromScale(image.width() / overlay.shape[1], image.height() / overlay.shape[0])
+        )
+
+    def set_tiles(self, tiles: list[tuple[int, int, int, int]]) -> None:
+        """Outline the tiles being processed.
+
+        Args:
+            tiles: Left, top, right and bottom of each tile in overlay pixels. Empty to remove the outlines.
+        """
+        for item in self._tiles:
+            self.scene().removeItem(item)
+        self._tiles = []
+        for left, top, right, bottom in tiles:
+            # A child of the overlay, so it is scaled the same way, but not faded with it
+            item = QGraphicsRectItem(left, top, right - left, bottom - top, self._overlay)
+            item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIgnoresParentOpacity)
+            item.setPen(_TILE_PEN)
+            self._tiles.append(item)
 
     def set_overlay_opacity(self, opacity: float) -> None:
         """Set how opaque the overlay is, from 0 to 1."""

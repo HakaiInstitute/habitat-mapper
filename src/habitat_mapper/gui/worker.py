@@ -9,13 +9,17 @@ from loguru import logger
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, SignalInstance, Slot
 
 from habitat_mapper.gui.batch import Status
+from habitat_mapper.gui.preview import LiveOverlay
 from habitat_mapper.processing import ImageProcessor, ProcessingCancelled
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
     from types import TracebackType
     from typing import Self
+
+    import numpy as np
+    from rasterio.windows import Window
 
     from habitat_mapper.model import ONNXModel
 
@@ -53,6 +57,28 @@ class _QtProgressReporter:
         return _QtTask(self._signal, total)
 
 
+class _LiveObserver:
+    """ProcessingObserver that draws the result into a LiveOverlay and reports the tiles being processed."""
+
+    def __init__(self, worker: SegmentWorker, row: int, nodata: float) -> None:
+        self._worker = worker
+        self._row = row
+        self._nodata = nodata
+        self._overlay: LiveOverlay | None = None
+
+    def image_started(self, height: int, width: int) -> None:
+        self._overlay = LiveOverlay(height, width, self._nodata)
+        self._worker.live_started.emit(self._row, self._overlay)
+
+    def batch_started(self, windows: Sequence[Window]) -> None:
+        if self._overlay is not None:
+            self._worker.tiles_started.emit(self._row, [self._overlay.to_preview(w) for w in windows])
+
+    def written(self, window: Window, data: np.ndarray) -> None:
+        if self._overlay is not None:
+            self._overlay.paste(window, data)
+
+
 class SegmentWorker(QObject):
     """Segments a list of images with one model. Move it to a QThread and connect `run` to the thread's start."""
 
@@ -61,6 +87,8 @@ class SegmentWorker(QObject):
     progress = Signal(int, int)  # Batches done and total, for the current image
     stage = Signal(str)
     device = Signal(str)
+    live_started = Signal(int, object)  # Queue row, LiveOverlay that fills in as the image is processed
+    tiles_started = Signal(int, object)  # Queue row, tiles being processed in LiveOverlay pixels
     finished = Signal()
 
     def __init__(self, model: ONNXModel, jobs: list[tuple[int, Path, Path]], options: dict[str, Any]) -> None:
@@ -109,7 +137,8 @@ class SegmentWorker(QObject):
             try:
                 processor = ImageProcessor.from_model(self._model, quiet=True, **self._options)
                 processor.reporter_cls = lambda: _QtProgressReporter(self.progress)
-                processor.run(input_path, output_path, cancel=self._cancelled.is_set)
+                observer = _LiveObserver(self, row, self._model.cfg.nodata_value)
+                processor.run(input_path, output_path, cancel=self._cancelled.is_set, observer=observer)
             except ProcessingCancelled:
                 logger.info(f"Cancelled {input_path.name}")
                 self.item_finished.emit(row, Status.CANCELLED, "")
