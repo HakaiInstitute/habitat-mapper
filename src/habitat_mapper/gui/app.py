@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
-from PySide6.QtCore import QObject, Qt, QThread, QUrl, Signal
+from PySide6.QtCore import QObject, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -628,6 +628,9 @@ def main() -> None:
     app.setOrganizationName("Hakai Institute")
     window = MainWindow()
     window.show()
+    # Used by CI to check that a frozen build can start
+    if os.environ.get("HAB_GUI_SMOKE_TEST"):
+        QTimer.singleShot(0, app.quit)
     sys.exit(app.exec())
 
 
