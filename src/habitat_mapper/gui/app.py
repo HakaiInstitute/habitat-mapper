@@ -43,7 +43,7 @@ from habitat_mapper.gui.batch import BatchItem, Status, existing_outputs, output
 from habitat_mapper.gui.canvas import PreviewCanvas
 from habitat_mapper.gui.diagnostics import LOG_DIR, add_log_file, diagnostics_report
 from habitat_mapper.gui.models_dialog import ModelsDialog, is_downloaded
-from habitat_mapper.gui.preview import read_input_preview, read_output_preview
+from habitat_mapper.gui.preview import LiveOverlay, read_input_preview, read_output_preview
 from habitat_mapper.gui.updates import newer_release
 from habitat_mapper.gui.worker import SegmentWorker, run_in_background
 from habitat_mapper.reader import SAFEReader
@@ -54,6 +54,8 @@ if TYPE_CHECKING:
 
     import numpy as np
 
+# How often the preview of the image being processed is redrawn
+_LIVE_REFRESH_MS = 200
 DOCS_URL = "https://habitat-mapper.readthedocs.io"
 _IMAGE_FILTER = "GeoTIFF images (*.tif *.tiff);;All files (*)"
 
@@ -99,6 +101,14 @@ class MainWindow(QMainWindow):
         self._worker: SegmentWorker | None = None
         self._active_device: str | None = None
         self._preview_request = 0
+        # Queue row the preview shows, and the row being processed with its result so far and current tiles
+        self._preview_row: int | None = None
+        self._live_row: int | None = None
+        self._live_overlay: LiveOverlay | None = None
+        self._live_tiles: list[tuple[int, int, int, int]] = []
+        self._live_timer = QTimer(self)
+        self._live_timer.setInterval(_LIVE_REFRESH_MS)
+        self._live_timer.timeout.connect(self._refresh_live_preview)
 
         self._build_menus()
         self.setCentralWidget(self._build_body())
@@ -269,6 +279,16 @@ class MainWindow(QMainWindow):
         self._opacity.valueChanged.connect(lambda value: self._canvas.set_overlay_opacity(value / 100))
         self._canvas.set_overlay_opacity(0.6)
 
+        self._live_legend = QLabel(
+            "White box: the tile being processed, dashed where it extends past the edge of the image. Haze: seen by "
+            "the model, but not finished until the tiles that overlap it to the right and below are processed, since "
+            "overlapping predictions are blended for smooth edges. Along the bottom and right edges, there are no "
+            "tiles left to overlap, so results finish straight away."
+        )
+        self._live_legend.setWordWrap(True)
+        self._live_legend.setStyleSheet("color: palette(placeholder-text);")
+        self._live_legend.hide()
+
         opacity_row = QHBoxLayout()
         opacity_row.addWidget(self._preview_label, 1)
         opacity_row.addWidget(QLabel("Result opacity"))
@@ -278,6 +298,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._canvas, 1)
+        layout.addWidget(self._live_legend)
         layout.addLayout(opacity_row)
         return widget
 
@@ -381,6 +402,7 @@ class MainWindow(QMainWindow):
         for row in sorted({index.row() for index in self._queue.selectedIndexes()}, reverse=True):
             self._queue.removeRow(row)
             del self._items[row]
+        self._preview_row = None
 
     def _clear_queue(self) -> None:
         if self._thread is not None:
@@ -388,6 +410,7 @@ class MainWindow(QMainWindow):
         self._queue.setRowCount(0)
         self._items.clear()
         self._canvas.set_images(None)
+        self._preview_row = None
 
     def _set_status(self, row: int, status: Status, error: str = "") -> None:
         item = self._items[row]
@@ -532,6 +555,8 @@ class MainWindow(QMainWindow):
         self._worker.progress.connect(self._show_progress)
         self._worker.stage.connect(self._stage.setText)
         self._worker.device.connect(self._set_device)
+        self._worker.live_started.connect(self._live_started)
+        self._worker.tiles_started.connect(self._tiles_started)
         self._worker.finished.connect(self._run_finished)
         self._set_running(True)
         self._progress.setRange(0, 0)
@@ -543,8 +568,36 @@ class MainWindow(QMainWindow):
 
     def _item_finished(self, row: int, status: Status, error: str) -> None:
         self._set_status(row, status, error)
-        if status is Status.DONE and self._queue.currentRow() == row:
+        if row == self._live_row:
+            self._live_timer.stop()
+            self._live_row, self._live_overlay, self._live_tiles = None, None, []
+            self._live_legend.hide()
+            if self._preview_row == row:
+                self._canvas.set_tiles([])
+        # Show the finished result, which has the final filters applied, or clear a cancelled one
+        if self._queue.currentRow() == row:
             self._show_selected_preview()
+
+    def _live_started(self, row: int, overlay: LiveOverlay) -> None:
+        self._live_row, self._live_overlay, self._live_tiles = row, overlay, []
+        self._live_timer.start()
+        # Follow the batch as it moves to the next image
+        if self._queue.currentRow() != row:
+            self._queue.selectRow(row)
+        elif self._preview_row == row:
+            self._preview_label.setText(f"{self._items[row].input_path.name} (processing)")
+
+    def _tiles_started(self, row: int, tiles: list[tuple[int, int, int, int]]) -> None:
+        if row == self._live_row:
+            self._live_tiles = tiles
+
+    def _refresh_live_preview(self) -> None:
+        showing_live = self._live_overlay is not None and self._preview_row == self._live_row
+        self._live_legend.setVisible(showing_live)
+        if self._live_overlay is None or not showing_live:
+            return
+        self._canvas.set_overlay(self._live_overlay.rgba)
+        self._canvas.set_tiles(self._live_tiles)
 
     def _cancel(self) -> None:
         if self._worker is not None:
@@ -607,7 +660,13 @@ class MainWindow(QMainWindow):
                 return
             image, overlay = cast("tuple[np.ndarray, np.ndarray | None]", result)
             self._canvas.set_images(image, overlay)
-            self._preview_label.setText(item.input_path.name + ("" if overlay is not None else " (not run yet)"))
+            self._preview_row = row
+            if row == self._live_row:
+                self._preview_label.setText(f"{item.input_path.name} (processing)")
+                self._refresh_live_preview()
+            else:
+                self._live_legend.hide()
+                self._preview_label.setText(item.input_path.name + ("" if overlay is not None else " (not run yet)"))
 
         def failed(error: str) -> None:
             if request == self._preview_request:

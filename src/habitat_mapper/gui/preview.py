@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
+import cv2
 import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from rasterio.windows import Window
+
+# Largest dimension of previews, in pixels
+PREVIEW_SIZE = 2048
+# Haze over the parts of a live preview that the model has seen but that aren't finished yet
+PENDING_RGBA = np.array([255, 255, 255, 90], dtype=np.uint8)
 
 # Colours for class values 1-10 of a segmentation. Class 0 and nodata are transparent
 CLASS_COLOURS = np.array(
@@ -30,7 +39,12 @@ CLASS_COLOURS = np.array(
 )
 
 
-def _preview_shape(height: int, width: int, max_size: int) -> tuple[int, int]:
+def preview_shape(height: int, width: int, max_size: int = PREVIEW_SIZE) -> tuple[int, int]:
+    """Size of the preview of an image, scaled down to fit in max_size.
+
+    Returns:
+        Preview height and width in pixels.
+    """
     scale = min(1.0, max_size / max(height, width))
     return max(1, round(height * scale)), max(1, round(width * scale))
 
@@ -57,7 +71,7 @@ def _true_colour_image(safe_dir: Path) -> Path:
         raise ValueError(f"Could not find a true colour image in {safe_dir}") from None
 
 
-def read_input_preview(path: Path, max_size: int = 2048, band_order: list[int] | None = None) -> np.ndarray:
+def read_input_preview(path: Path, max_size: int = PREVIEW_SIZE, band_order: list[int] | None = None) -> np.ndarray:
     """Read an RGB preview of an input image, using its overviews when it has them.
 
     Args:
@@ -73,7 +87,7 @@ def read_input_preview(path: Path, max_size: int = 2048, band_order: list[int] |
 
     with rasterio.open(path) as src:
         bands = (band_order or [1, 2, 3])[:3] if src.count >= 3 else [1, 1, 1]
-        height, width = _preview_shape(src.height, src.width, max_size)
+        height, width = preview_shape(src.height, src.width, max_size)
         data = src.read(bands, out_shape=(3, height, width), resampling=Resampling.nearest)
         valid = src.read_masks(1, out_shape=(height, width), resampling=Resampling.nearest) > 0
 
@@ -82,7 +96,26 @@ def read_input_preview(path: Path, max_size: int = 2048, band_order: list[int] |
     return np.ascontiguousarray(np.moveaxis(data, 0, -1))
 
 
-def read_output_preview(path: Path, max_size: int = 2048) -> np.ndarray:
+def colourise(classes: np.ndarray, nodata: float | None) -> np.ndarray:
+    """Colour a segmentation for drawing over its image.
+
+    Args:
+        classes: (height, width) array of class values.
+        nodata: Value for pixels outside the image, if any.
+
+    Returns:
+        A (height, width, 4) uint8 RGBA array, transparent where the class is 0 or nodata.
+    """
+    rgba = np.zeros((*classes.shape, 4), dtype=np.uint8)
+    rgba[..., :3] = CLASS_COLOURS[np.clip(classes, 0, len(CLASS_COLOURS) - 1)]
+    visible = classes != 0
+    if nodata is not None:
+        visible &= classes != nodata
+    rgba[..., 3] = np.where(visible, 255, 0)
+    return rgba
+
+
+def read_output_preview(path: Path, max_size: int = PREVIEW_SIZE) -> np.ndarray:
     """Read a segmentation output as a colour overlay.
 
     Args:
@@ -93,14 +126,82 @@ def read_output_preview(path: Path, max_size: int = 2048) -> np.ndarray:
         A (height, width, 4) uint8 RGBA array, transparent where the class is 0 or nodata.
     """
     with rasterio.open(path) as src:
-        height, width = _preview_shape(src.height, src.width, max_size)
+        height, width = preview_shape(src.height, src.width, max_size)
         classes = src.read(1, out_shape=(height, width), resampling=Resampling.nearest)
         nodata = src.nodata
+    return colourise(classes, nodata)
 
-    rgba = np.zeros((height, width, 4), dtype=np.uint8)
-    rgba[..., :3] = CLASS_COLOURS[np.clip(classes, 0, len(CLASS_COLOURS) - 1)]
-    visible = classes != 0
-    if nodata is not None:
-        visible &= classes != nodata
-    rgba[..., 3] = np.where(visible, 255, 0)
-    return rgba
+
+class LiveOverlay:
+    """Preview of a result that fills in as each part of it is written.
+
+    Tiles overlap, and the model's predictions where they overlap are blended, so most of a tile isn't finished until
+    the tiles to its right and below have been processed too. Those parts are covered in a haze until they are written.
+
+    Parts are drawn by the processing thread and read by the UI thread. Reading a part-drawn tile only shows it a
+    moment early, so there's no locking.
+
+    Attributes:
+        rgba: (height, width, 4) uint8 preview, the same size as the preview of the input image.
+    """
+
+    def __init__(self, height: int, width: int, nodata: float | None, max_size: int = PREVIEW_SIZE) -> None:
+        """Start an empty preview.
+
+        Args:
+            height: Height of the image being processed, in pixels.
+            width: Width of the image being processed, in pixels.
+            nodata: Value the result uses for pixels outside the image.
+            max_size: Largest dimension of the preview, in pixels.
+        """
+        preview_height, preview_width = preview_shape(height, width, max_size)
+        self._scale_y = preview_height / height
+        self._scale_x = preview_width / width
+        self._nodata = nodata
+        self.rgba = np.zeros((preview_height, preview_width, 4), dtype=np.uint8)
+        self._written = np.zeros((preview_height, preview_width), dtype=bool)
+
+    def tile_to_preview(self, window: Window) -> tuple[int, int, int, int]:
+        """Scale a window of the image to the preview, including any part past the edge of the image.
+
+        Returns:
+            Left, top, right and bottom of the window in preview pixels.
+        """
+        left = math.floor(window.col_off * self._scale_x)
+        top = math.floor(window.row_off * self._scale_y)
+        right = max(math.ceil((window.col_off + window.width) * self._scale_x), left + 1)
+        bottom = max(math.ceil((window.row_off + window.height) * self._scale_y), top + 1)
+        return left, top, right, bottom
+
+    def to_preview(self, window: Window) -> tuple[int, int, int, int]:
+        """Scale the part of a window inside the image to the preview, covering at least one preview pixel.
+
+        Returns:
+            Left, top, right and bottom of the window in preview pixels.
+        """
+        height, width = self.rgba.shape[:2]
+        left, top, right, bottom = self.tile_to_preview(window)
+        left, top = min(left, width - 1), min(top, height - 1)
+        return left, top, max(min(right, width), left + 1), max(min(bottom, height), top + 1)
+
+    def mark_pending(self, window: Window) -> None:
+        """Cover the parts of a tile that aren't finished in a haze.
+
+        Args:
+            window: A tile the model is about to process.
+        """
+        left, top, right, bottom = self.to_preview(window)
+        region = self.rgba[top:bottom, left:right]
+        region[~self._written[top:bottom, left:right]] = PENDING_RGBA
+
+    def paste(self, window: Window, classes: np.ndarray) -> None:
+        """Draw a part of the result.
+
+        Args:
+            window: Where the part is in the image.
+            classes: Class values of the part, the same size as the window.
+        """
+        left, top, right, bottom = self.to_preview(window)
+        small = cv2.resize(classes, (right - left, bottom - top), interpolation=cv2.INTER_NEAREST)
+        self.rgba[top:bottom, left:right] = colourise(small, self._nodata)
+        self._written[top:bottom, left:right] = True

@@ -9,9 +9,10 @@ import numpy as np
 import pytest
 import rasterio
 import requests
+from rasterio.windows import Window
 
 from habitat_mapper.gui.batch import BatchItem, existing_outputs, output_path_for
-from habitat_mapper.gui.preview import read_input_preview, read_output_preview
+from habitat_mapper.gui.preview import PENDING_RGBA, LiveOverlay, read_input_preview, read_output_preview
 from habitat_mapper.gui.updates import newer_release
 from tests.test_blank_tile_skipping import _write_raster
 
@@ -76,3 +77,50 @@ def test_newer_release(tag: str, expected: tuple[str, str] | None) -> None:
 def test_newer_release_ignores_network_errors() -> None:
     with patch("habitat_mapper.gui.updates.requests.get", side_effect=requests.ConnectionError):
         assert newer_release("0.17.0") is None
+
+
+def test_live_overlay_draws_parts_at_preview_scale() -> None:
+    overlay = LiveOverlay(height=400, width=800, nodata=None, max_size=100)
+    assert overlay.rgba.shape == (50, 100, 4)
+
+    window = Window(col_off=400, row_off=0, width=400, height=200)
+    assert overlay.to_preview(window) == (50, 0, 100, 25)
+    overlay.paste(window, np.full((200, 400), 1, dtype=np.uint8))
+
+    assert np.all(overlay.rgba[:25, 50:, 3] == 255)
+    assert np.all(overlay.rgba[:25, :50, 3] == 0)
+    assert np.all(overlay.rgba[25:, :, 3] == 0)
+
+
+def test_live_overlay_draws_tiny_parts_as_a_pixel() -> None:
+    overlay = LiveOverlay(height=4000, width=4000, nodata=None, max_size=100)
+    assert overlay.to_preview(Window(col_off=3999, row_off=3999, width=1, height=1)) == (99, 99, 100, 100)
+
+
+def test_live_overlay_hazes_pending_parts_until_written() -> None:
+    overlay = LiveOverlay(height=100, width=100, nodata=None, max_size=100)
+    tile = Window(col_off=0, row_off=0, width=50, height=50)
+    finished = Window(col_off=0, row_off=0, width=25, height=25)
+
+    overlay.mark_pending(tile)
+    assert np.all(overlay.rgba[:50, :50] == PENDING_RGBA)
+    assert np.all(overlay.rgba[50:, :, 3] == 0)
+
+    # Background results are transparent, which clears the haze
+    overlay.paste(finished, np.zeros((25, 25), dtype=np.uint8))
+    assert np.all(overlay.rgba[:25, :25, 3] == 0)
+    assert np.all(overlay.rgba[25:50, :50] == PENDING_RGBA)
+
+    # A later tile that overlaps finished results doesn't cover them again
+    overlay.mark_pending(Window(col_off=0, row_off=0, width=100, height=100))
+    assert np.all(overlay.rgba[:25, :25, 3] == 0)
+
+
+def test_tiles_past_the_edge_of_the_image() -> None:
+    overlay = LiveOverlay(height=100, width=100, nodata=None, max_size=100)
+    tile = Window(col_off=80, row_off=80, width=50, height=50)
+
+    assert overlay.tile_to_preview(tile) == (80, 80, 130, 130)
+    assert overlay.to_preview(tile) == (80, 80, 100, 100)
+    overlay.mark_pending(tile)
+    assert np.all(overlay.rgba[80:, 80:] == PENDING_RGBA)
