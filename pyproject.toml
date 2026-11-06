@@ -30,6 +30,10 @@ dependencies = [
 cuda = [
     "onnxruntime-gpu[cuda, cudnn]>=1.31.1 ; platform_system != 'Darwin'",
 ]
+gui = [
+    "packaging>=26.3",
+    "pyside6-essentials>=6.12.0",
+]
 
 [dependency-groups]
 conversion = [
@@ -69,6 +73,9 @@ Documentation = "https://habitat-mapper.readthedocs.io"
 
 [project.scripts]
 hab = "habitat_mapper.main:main"
+
+[project.gui-scripts]
+hab-gui = "habitat_mapper.gui.app:main"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14"]
