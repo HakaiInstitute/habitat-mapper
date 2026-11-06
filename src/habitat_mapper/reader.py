@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -200,6 +199,9 @@ class TIFFReader(ImageReader):
 
         Returns:
             Numpy array of shape [bands, height, width].
+
+        Raises:
+            ValueError: If band_order has a band index the image doesn't have.
         """
         if band_order is None:
             # Read all bands
@@ -207,11 +209,10 @@ class TIFFReader(ImageReader):
         else:
             # Validate band indices
             if any(b < 1 or b > self.num_bands for b in band_order):
-                logger.error(
-                    f"Band order {band_order} is invalid for image with {self.num_bands} bands.\n "
+                raise ValueError(
+                    f"Band order {band_order} is invalid for image with {self.num_bands} bands. "
                     "Please specify band indices between 1 and the number of bands in the image (GDAL indexing)."
                 )
-                sys.exit(1)
 
             # Read selected bands in the specified order
             data = self._src.read(indexes=band_order, window=window, boundless=boundless, fill_value=fill_value)
@@ -434,6 +435,7 @@ class SAFEReader(ImageReader):
         Raises:
             RuntimeError: If band data has not been loaded.
             IndexError: If window is outside image bounds when boundless=False.
+            ValueError: If band_order has a band index the image doesn't have.
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
@@ -485,11 +487,10 @@ class SAFEReader(ImageReader):
         if band_order is not None:
             # Validate band indices
             if any(b < 1 or b > self.num_bands for b in band_order):
-                logger.error(
-                    f"Band order {band_order} is invalid for image with {self.num_bands} bands.\n "
+                raise ValueError(
+                    f"Band order {band_order} is invalid for image with {self.num_bands} bands. "
                     "Please specify band indices between 1 and the number of bands in the image (GDAL indexing)."
                 )
-                sys.exit(1)
             # Reorder bands (convert from 1-based to 0-based indexing)
             band_indices = [b - 1 for b in band_order]
             data = data[band_indices, :, :]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import itertools
 import os
 import sys
@@ -709,6 +710,11 @@ def main() -> None:
     """Run the command line interface."""
     global _exit_on_error  # noqa: PLW0603
     _exit_on_error = True
+    # Output piped on Windows is encoded with the ANSI code page, which can't encode symbols like ✓. Replace them
+    # instead of failing
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="replace")
     app()
 
 

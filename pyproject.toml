@@ -60,6 +60,9 @@ examples = [
     "shapely>=2.1.1",
     "tqdm>=4.67.1",
 ]
+freeze = [
+    "pyinstaller>=6.22.3",
+]
 
 [project.urls]
 Documentation = "https://habitat-mapper.readthedocs.io"

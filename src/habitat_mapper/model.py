@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -67,8 +66,19 @@ class ONNXModel:
         return self.cfg.revision
 
     @property
+    def active_device(self) -> str | None:
+        """The device and hardware the model last ran on, e.g. "webgpu (Apple GPU)", or None before it has run."""
+        if self.__ort_sess is None:
+            return None
+        return describe_provider(self.__ort_sess.get_providers()[0])
+
+    @property
     def _ort_sess(self) -> ort.InferenceSession:
-        """Load and cache the ONNX Runtime session for the requested device."""
+        """Load and cache the ONNX Runtime session for the requested device.
+
+        Raises:
+            RuntimeError: If the model file is corrupt. It is deleted so that it downloads again next time.
+        """
         if self.__ort_sess is not None and self.__ort_sess_device == self._device:
             return self.__ort_sess
 
@@ -84,9 +94,10 @@ class ONNXModel:
             self.__ort_sess_device = self._device
             self.__ort_sess_has_run = False
         except InvalidProtobuf:
-            logger.error("Failed to load ONNX model. Removing corrupted model file. Please try again.")
             local_model_path.unlink()
-            sys.exit(1)
+            raise RuntimeError(
+                "Failed to load ONNX model. Removed the corrupted model file. Please try again."
+            ) from None
 
         return self.__ort_sess
 

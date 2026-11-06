@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import math
-import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import cv2
@@ -20,10 +20,13 @@ from habitat_mapper.utils import batched
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable
-    from pathlib import Path
 
     from habitat_mapper.model import ONNXModel
     from habitat_mapper.reader import ImageReader
+
+
+class ProcessingCancelled(Exception):  # noqa: N818
+    """Raised when processing is cancelled before it finishes."""
 
 
 @dataclass
@@ -96,12 +99,39 @@ class ImageProcessor:
         self,
         img_path: str | Path,
         output_path: str | Path,
+        cancel: Callable[[], bool] | None = None,
     ) -> None:
         """Process a raster file with tiled segmentation.
 
         Args:
             img_path: Path to input raster or SAFE directory
             output_path: Path to output segmentation raster
+            cancel: Called before each batch. If it returns True, processing stops and the partial output is deleted.
+
+        Raises:
+            ProcessingCancelled: If cancel returned True.
+        """
+        # The model config is shared by every run, so don't keep the pixel range detected from this image
+        max_pixel_value = self.model.cfg.max_pixel_value
+        try:
+            self._run(img_path, output_path, cancel)
+        except ProcessingCancelled:
+            Path(output_path).unlink(missing_ok=True)
+            raise
+        finally:
+            self.model.cfg.max_pixel_value = max_pixel_value
+
+    def _run(
+        self,
+        img_path: str | Path,
+        output_path: str | Path,
+        cancel: Callable[[], bool] | None,
+    ) -> None:
+        """Process a raster file with tiled segmentation. See run.
+
+        Raises:
+            ValueError: If the image data type isn't supported.
+            ProcessingCancelled: If cancel returned True.
         """
         register = None
 
@@ -136,11 +166,10 @@ class ImageProcessor:
                     )
                     self.model.cfg.max_pixel_value = 1.0
                 else:
-                    logger.error(
+                    raise ValueError(
                         f"Unsupported image data type {dtype} for model. "
-                        f"Convert your image to uint8 or uint16 before processing.",
+                        f"Convert your image to uint8 or uint16 before processing."
                     )
-                    sys.exit(0)
 
             # Update profile for output
             profile.update({"dtype": "uint8", "count": 1, "compress": "lzw", "nodata": self.model.cfg.nodata_value})
@@ -165,6 +194,9 @@ class ImageProcessor:
                 with self.reporter_cls() as reporter:
                     task = reporter.add_task("Segmenting", total=len(window_batches))
                     for window_batch in window_batches:
+                        if cancel is not None and cancel():
+                            raise ProcessingCancelled
+
                         # Read tile data from source raster
                         input_batch = self._load_batch(reader, window_batch)
 
