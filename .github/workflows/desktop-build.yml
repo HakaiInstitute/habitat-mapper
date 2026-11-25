@@ -79,7 +79,9 @@ jobs:
       - name: Freeze
         run: uv run --no-sync pyinstaller packaging/habitat-mapper.spec --noconfirm
 
+      # Downloads a ~100 MB model, so a stalled download fails here rather than at the 6 hour job limit
       - name: Smoke test
+        timeout-minutes: 15
         run: uv run --no-sync python packaging/smoke_test.py dist/habitat-mapper/hab dist/habitat-mapper/Habitat-Mapper
 
       - name: Build the Windows installer
