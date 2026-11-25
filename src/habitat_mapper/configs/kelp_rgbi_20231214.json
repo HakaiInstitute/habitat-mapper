@@ -3,6 +3,18 @@
   "name": "kelp-rgbi",
   "revision": "20231214",
   "description": "Kelp segmentation model for 4-band RGB+NIR drone imagery.",
+  "classes": [
+    {
+      "value": 1,
+      "name": "Giant kelp",
+      "colour": "#F2C230"
+    },
+    {
+      "value": 2,
+      "name": "Bull kelp",
+      "colour": "#E8434F"
+    }
+  ],
   "dependencies": [
     "https://huggingface.co/HakaiInstitute/kelp-rgbi/resolve/20231214/model.onnx"
   ],
