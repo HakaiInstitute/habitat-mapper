@@ -14,6 +14,9 @@ import rasterio
 from rasterio.transform import from_origin
 
 SIZE = 1024
+# The smallest RGB model, to keep the download short. Its weights are in a separate .onnx.data file, which also
+# checks that the frozen build can load models stored that way.
+MODEL = "eelgrass-rgb"
 
 
 def main() -> None:
@@ -42,7 +45,7 @@ def main() -> None:
             dst.write(rng.integers(0, 256, (3, SIZE, SIZE), dtype=np.uint8))
 
         subprocess.run([hab, "devices"], check=True)  # noqa: S603
-        subprocess.run([hab, "segment", "kelp-rgb", img_path, out_path], check=True)  # noqa: S603
+        subprocess.run([hab, "segment", MODEL, img_path, out_path], check=True)  # noqa: S603
 
         with rasterio.open(out_path) as src:
             if (src.height, src.width) != (SIZE, SIZE):
