@@ -67,7 +67,7 @@ Apply a segmentation model to an input raster and save the output.
 **Parameters**:
 
 * `MODEL, --model, -m`: The name of the model to run. Run `hab models` to see options **[required]**
-* `INPUT, --input, -i`: Path to input raster file (GeoTIFF, etc.) or Sentinel-2 SAFE directory **[required]**
+* `INPUT, --input, -i`: Path to input raster file (GeoTIFF, etc.), or Sentinel-2 SAFE directory or its .zip download **[required]**
 * `OUTPUT, --output, -o`: Path to the output raster that will be created **[required]**
 * `REVISION, --revision, --rev`: The revision of the model to use. Run `hab revisions <model_name>` to see options *[default: latest]*
 * `BATCH-SIZE, --batch-size`: Batch size for processing *[default: 1]*

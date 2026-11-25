@@ -26,6 +26,7 @@ from habitat_mapper.gui.preview import (
 from habitat_mapper.gui.updates import newer_release
 from habitat_mapper.registry import model_registry
 from tests.test_blank_tile_skipping import _write_raster
+from tests.test_safe_reader import _make_safe, _zip
 
 
 def test_output_path_for_file_and_safe_folder() -> None:
@@ -35,6 +36,14 @@ def test_output_path_for_file_and_safe_folder() -> None:
     )
     assert (
         output_path_for(Path("/data/S2B_MSIL2A_X.SAFE"), out, "kelp-skema", "20261014")
+        == out / "S2B_MSIL2A_X_kelp_skema_20261014.tif"
+    )
+    assert (
+        output_path_for(Path("/data/S2B_MSIL2A_X.SAFE.zip"), out, "kelp-skema", "20261014")
+        == out / "S2B_MSIL2A_X_kelp_skema_20261014.tif"
+    )
+    assert (
+        output_path_for(Path("/data/S2B_MSIL2A_X.zip"), out, "kelp-skema", "20261014")
         == out / "S2B_MSIL2A_X_kelp_skema_20261014.tif"
     )
 
@@ -164,7 +173,7 @@ def test_colourise_with_palette() -> None:
 def test_input_description_and_default_band_order() -> None:
     assert input_description(model_registry["kelp-rgb"].cfg) == "RGB GeoTIFF"
     assert input_description(model_registry["kelp-rgbi"].cfg) == "RGB + near-infrared GeoTIFF"
-    assert input_description(model_registry["kelp-skema"].cfg) == "Sentinel-2 L2A .SAFE folder"
+    assert input_description(model_registry["kelp-skema"].cfg) == "Sentinel-2 L2A .SAFE folder or .zip"
     assert default_band_order(model_registry["kelp-rgbi"].cfg) == "1, 2, 3, 4"
 
 
@@ -173,9 +182,20 @@ def test_accepted_inputs(tmp_path: Path) -> None:
     tiff = tmp_path / "b.TIFF"
     other = tmp_path / "c.jpg"
     safe = tmp_path / "S2B_X.SAFE"
-    for path in (tif, tiff, other):
+    safe_zip = tmp_path / "S2B_Y.SAFE.ZIP"
+    for path in (tif, tiff, other, safe_zip):
         path.touch()
     safe.mkdir()
 
-    assert accepted_inputs([tif, other, safe, tiff], safe=False) == [tif, tiff]
-    assert accepted_inputs([tif, other, safe, tiff], safe=True) == [safe]
+    assert accepted_inputs([tif, other, safe, tiff, safe_zip], safe=False) == [tif, tiff]
+    assert accepted_inputs([tif, other, safe, tiff, safe_zip], safe=True) == [safe, safe_zip]
+
+
+def test_input_preview_of_safe_zip(tmp_path: Path) -> None:
+    safe = _make_safe(tmp_path)
+    zipped = _zip(safe, tmp_path / "S2B_MSIL2A_X.SAFE.zip", "S2B_MSIL2A_X.SAFE/")
+
+    preview = read_input_preview(zipped, max_size=10)
+
+    assert preview.shape == (10, 10, 3)
+    np.testing.assert_array_equal(preview, read_input_preview(safe, max_size=10))

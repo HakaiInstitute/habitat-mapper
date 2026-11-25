@@ -63,7 +63,7 @@ hab segment kelp-skema /path/to/scene.SAFE kelp.tif
 
 ### Inputs
 
-- **Data:** an unzipped Sentinel-2 Level-2A `.SAFE` folder. See
+- **Data:** a Sentinel-2 Level-2A `.SAFE` folder, or the `.zip` it downloads as. See
   [Download Sentinel-2 Data](../guides/skema/download.md).
 - **Bands:** Blue (B2), Green (B3), Red (B4), NIR (B8) and Red-edge 1 (B5), read automatically from the `.SAFE`
   folder. The model computes five spectral indices from these bands itself (NDVI, NDWI, GNDVI, CIG and NDVIre), so

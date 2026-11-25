@@ -10,6 +10,8 @@ import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 
+from habitat_mapper.reader import SafeProduct, is_safe_zip
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
@@ -89,28 +91,29 @@ def _stretch(band: np.ndarray, valid: np.ndarray) -> np.ndarray:
     return (np.clip((band.astype(np.float32) - low) / (high - low), 0, 1) * 255).astype(np.uint8)
 
 
-def _true_colour_image(safe_dir: Path) -> Path:
+def _true_colour_image(safe_path: Path) -> str:
     try:
-        return next(safe_dir.glob("GRANULE/**/IMG_DATA/**/*_TCI_10m.jp2"))
-    except StopIteration:
-        raise ValueError(f"Could not find a true colour image in {safe_dir}") from None
+        return SafeProduct(safe_path).find("GRANULE/*/IMG_DATA/*_TCI_10m.jp2")
+    except FileNotFoundError:
+        raise ValueError(f"Could not find a true colour image in {safe_path}") from None
 
 
 def read_input_preview(path: Path, max_size: int = PREVIEW_SIZE, band_order: list[int] | None = None) -> np.ndarray:
     """Read an RGB preview of an input image, using its overviews when it has them.
 
     Args:
-        path: GeoTIFF, or Sentinel-2 .SAFE directory, in which case its true colour image is used.
+        path: GeoTIFF, or Sentinel-2 .SAFE directory or .zip, in which case its true colour image is used.
         max_size: Largest dimension of the preview, in pixels.
         band_order: Band order the model is run with. Its first three bands are shown as red, green and blue.
 
     Returns:
         A (height, width, 3) uint8 array.
     """
-    if path.is_dir():
-        path, band_order = _true_colour_image(path), [1, 2, 3]
+    source: Path | str = path
+    if path.is_dir() or is_safe_zip(path):
+        source, band_order = _true_colour_image(path), [1, 2, 3]
 
-    with rasterio.open(path) as src:
+    with rasterio.open(source) as src:
         bands = (band_order or [1, 2, 3])[:3] if src.count >= 3 else [1, 1, 1]
         height, width = preview_shape(src.height, src.width, max_size)
         data = src.read(bands, out_shape=(3, height, width), resampling=Resampling.nearest)

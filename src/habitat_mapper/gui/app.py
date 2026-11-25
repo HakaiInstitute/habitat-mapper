@@ -84,6 +84,7 @@ if TYPE_CHECKING:
 _LIVE_REFRESH_MS = 200
 DOCS_URL = "https://habitat-mapper.readthedocs.io"
 _IMAGE_FILTER = "GeoTIFF images (*.tif *.tiff);;All files (*)"
+_SAFE_ZIP_FILTER = "Sentinel-2 SAFE zips (*.zip);;All files (*)"
 # Fraction of an image done, stored on its status cell while it is processed
 _PROGRESS_ROLE = Qt.ItemDataRole.UserRole + 1
 _LIVE_HELP = (
@@ -239,8 +240,11 @@ class MainWindow(QMainWindow):
         self._add_images_action.triggered.connect(self._add_images)
         self._add_safe_action = QAction("Add Sentinel-2 SAFE folder…", self)
         self._add_safe_action.triggered.connect(self._add_safe_folder)
+        self._add_safe_zip_action = QAction("Add Sentinel-2 SAFE zips…", self)
+        self._add_safe_zip_action.triggered.connect(self._add_safe_zips)
         file_menu.addAction(self._add_images_action)
         file_menu.addAction(self._add_safe_action)
+        file_menu.addAction(self._add_safe_zip_action)
         file_menu.addSeparator()
         quit_action = QAction("Quit", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
@@ -412,11 +416,14 @@ class MainWindow(QMainWindow):
         self._queue.customContextMenuRequested.connect(self._queue_menu)
         self._queue.cellDoubleClicked.connect(self._open_row)
 
-        # Only one of the add buttons is shown, depending on what the model reads
+        # Only the add buttons for what the model reads are shown
         self._add_images_button = QPushButton("Add GeoTIFFs…")
         self._add_images_button.clicked.connect(self._add_images)
         self._add_safe_button = QPushButton("Add SAFE folder…")
         self._add_safe_button.clicked.connect(self._add_safe_folder)
+        self._add_safe_zip_button = QPushButton("Add SAFE zips…")
+        self._add_safe_zip_button.setToolTip("Add Sentinel-2 .SAFE products as downloaded, without extracting them")
+        self._add_safe_zip_button.clicked.connect(self._add_safe_zips)
         self._remove_button = QPushButton("Remove")
         self._remove_button.clicked.connect(self._remove_selected)
         self._clear_button = QPushButton("Clear")
@@ -424,6 +431,7 @@ class MainWindow(QMainWindow):
         buttons = QHBoxLayout()
         buttons.addWidget(self._add_images_button)
         buttons.addWidget(self._add_safe_button)
+        buttons.addWidget(self._add_safe_zip_button)
         buttons.addStretch(1)
         buttons.addWidget(self._remove_button)
         buttons.addWidget(self._clear_button)
@@ -639,9 +647,17 @@ class MainWindow(QMainWindow):
         if not path:
             return
         if not path.endswith(".SAFE"):
-            QMessageBox.warning(self, "Not a SAFE folder", "Choose a Sentinel-2 folder whose name ends in .SAFE.")
+            QMessageBox.warning(
+                self,
+                "Not a SAFE folder",
+                "Choose a Sentinel-2 folder whose name ends in .SAFE, or use Add SAFE zips… for a .zip download.",
+            )
             return
         self._add_paths([Path(path)])
+
+    def _add_safe_zips(self) -> None:
+        paths, _ = QFileDialog.getOpenFileNames(self, "Add Sentinel-2 SAFE zips", "", _SAFE_ZIP_FILTER)
+        self._add_paths([Path(p) for p in paths])
 
     def _add_paths(self, paths: list[Path]) -> None:
         queued = {item.input_path for item in self._items}
@@ -689,7 +705,10 @@ class MainWindow(QMainWindow):
         if not count:
             self._preview_label.setText("")
             if safe:
-                self._canvas.set_placeholder("Drop .SAFE folders here", "Or use Add SAFE folder… to choose them")
+                self._canvas.set_placeholder(
+                    "Drop .SAFE folders or .zip downloads here",
+                    "Or use Add SAFE folder… or Add SAFE zips… to choose them",
+                )
             else:
                 self._canvas.set_placeholder("Drop GeoTIFFs here", "Or use Add GeoTIFFs… to choose them")
         elif not self._canvas.has_image():
@@ -793,7 +812,7 @@ class MainWindow(QMainWindow):
             self._add_paths(paths)
         skipped = len(dropped) - len(paths)
         if skipped:
-            needs = "Sentinel-2 .SAFE folders" if safe else "GeoTIFF images (.tif or .tiff)"
+            needs = "Sentinel-2 .SAFE folders or their .zip downloads" if safe else "GeoTIFF images (.tif or .tiff)"
             self.statusBar().showMessage(
                 f"{skipped} item{'s' if skipped != 1 else ''} not added. {self._model.currentData()} reads {needs}.",
                 8000,
@@ -819,6 +838,8 @@ class MainWindow(QMainWindow):
         self._add_images_action.setVisible(not safe)
         self._add_safe_button.setVisible(safe)
         self._add_safe_action.setVisible(safe)
+        self._add_safe_zip_button.setVisible(safe)
+        self._add_safe_zip_action.setVisible(safe)
         self._revision_changed()
 
     def _revision_changed(self) -> None:
