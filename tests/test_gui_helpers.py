@@ -145,20 +145,20 @@ def test_model_configs_name_their_classes() -> None:
 
 
 def test_class_palette_uses_model_colours_and_falls_back() -> None:
-    palette = class_palette([OutputClass(value=2, name="Bull kelp", colour="#E8434F")])
+    palette = class_palette([OutputClass(value=2, name="Bull kelp", colour="#F2C230")])
 
     assert palette.shape == (256, 3)
-    assert list(palette[2]) == [0xE8, 0x43, 0x4F]
+    assert list(palette[2]) == [0xF2, 0xC2, 0x30]
     assert list(palette[1]) == list(DEFAULT_PALETTE[1])
 
 
 def test_colourise_with_palette() -> None:
-    palette = class_palette([OutputClass(value=1, name="Kelp", colour="#F2C230")])
+    palette = class_palette([OutputClass(value=1, name="Kelp", colour="#E8434F")])
 
     rgba = colourise(np.array([[0, 1]], dtype=np.uint8), nodata=None, palette=palette)
 
     assert list(rgba[0, 0]) == [0, 0, 0, 0]
-    assert list(rgba[0, 1]) == [0xF2, 0xC2, 0x30, 255]
+    assert list(rgba[0, 1]) == [0xE8, 0x43, 0x4F, 255]
 
 
 def test_input_description_and_default_band_order() -> None:

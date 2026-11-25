@@ -7,12 +7,12 @@
     {
       "value": 1,
       "name": "Giant kelp",
-      "colour": "#F2C230"
+      "colour": "#E8434F"
     },
     {
       "value": 2,
       "name": "Bull kelp",
-      "colour": "#E8434F"
+      "colour": "#F2C230"
     }
   ],
   "dependencies": [
