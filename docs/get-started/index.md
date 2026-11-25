@@ -3,6 +3,10 @@
 This guide takes you from **no command line experience** to a finished habitat map you can open in ArcGIS Pro or
 QGIS. You don't need to know Python. Follow the steps in order; each one ends with a link to the next.
 
+!!! tip "Prefer not to use the terminal?"
+    The [desktop app](desktop-app.md) for Windows and macOS runs the same models in a window, with nothing else to
+    install.
+
 <div class="grid cards" markdown="1" style="grid-template-columns: 1fr;">
 
 -   :material-console: **1. Using the Terminal**
