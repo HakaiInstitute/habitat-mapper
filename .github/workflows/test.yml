@@ -6,8 +6,7 @@ on:
       - dev
   pull_request:
     branches:
-      - main
-      - dev
+      - '**'  # Includes PRs stacked on other PR branches
   workflow_dispatch:
 
 jobs:
