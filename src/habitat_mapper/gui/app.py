@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication, QKeySequence
+from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication, QIcon, QKeySequence
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -712,6 +712,8 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Habitat-Mapper")
     app.setOrganizationName("Hakai Institute")
+    # Frozen builds also embed the icon in the executable or app bundle; this covers running from source
+    app.setWindowIcon(QIcon(str(Path(__file__).with_name("icon.png"))))
     window = MainWindow()
     window.show()
     # Used by CI to check that a frozen build can start

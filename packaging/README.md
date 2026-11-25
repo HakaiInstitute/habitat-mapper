@@ -33,3 +33,8 @@ This makes `dist/habitat-mapper/`, and `dist/Habitat-Mapper.app` on macOS. To ma
   `hdiutil create -volname Habitat-Mapper -srcfolder <folder> -format UDZO Habitat-Mapper.dmg`.
 
 The installers aren't code signed, so Windows SmartScreen and macOS Gatekeeper warn about them the first time they run.
+
+## App icon
+
+`packaging/icons/` holds the icon as an `.icns` for the macOS app bundle and an `.ico` for the Windows executables and
+installer. The app sets its window icon from `src/habitat_mapper/gui/icon.png`.

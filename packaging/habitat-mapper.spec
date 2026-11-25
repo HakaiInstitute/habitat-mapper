@@ -1,5 +1,6 @@
 # PyInstaller spec for the Habitat-Mapper desktop app and `hab` command line tool, which share one folder. Build with:
 #   uv run --group freeze --extra gui pyinstaller packaging/habitat-mapper.spec --noconfirm
+import os
 import sys
 from importlib.metadata import PackageNotFoundError, version
 
@@ -16,6 +17,8 @@ for package in ("habitat-mapper", "onnxruntime", "onnxruntime-gpu", "onnxruntime
 hiddenimports = collect_submodules("rasterio") + ["onnxruntime_ep_webgpu"]
 # The WebGPU plugin is loaded by path at runtime, so PyInstaller can't find it by following imports
 binaries = collect_dynamic_libs("onnxruntime_ep_webgpu")
+# App icon for the executables and macOS app bundle
+ICON = os.path.join(SPECPATH, "icons", "habitat-mapper")
 excludes = ["torch", "segmentation_models_pytorch", "onnxscript", "matplotlib", "tkinter", "IPython"]
 
 
@@ -24,10 +27,20 @@ def analyse(script):
 
 
 cli = analyse("hab_cli.py")
-cli_exe = EXE(PYZ(cli.pure), cli.scripts, exclude_binaries=True, name="hab", console=True, upx=False)
+cli_exe = EXE(
+    PYZ(cli.pure), cli.scripts, exclude_binaries=True, name="hab", console=True, upx=False, icon=f"{ICON}.ico"
+)
 
 gui = analyse("hab_gui.py")
-gui_exe = EXE(PYZ(gui.pure), gui.scripts, exclude_binaries=True, name="Habitat-Mapper", console=False, upx=False)
+gui_exe = EXE(
+    PYZ(gui.pure),
+    gui.scripts,
+    exclude_binaries=True,
+    name="Habitat-Mapper",
+    console=False,
+    upx=False,
+    icon=f"{ICON}.ico",
+)
 
 # The app comes first, so it is what the macOS app bundle runs
 coll = COLLECT(
@@ -39,6 +52,7 @@ if sys.platform == "darwin":
     BUNDLE(
         coll,
         name="Habitat-Mapper.app",
+        icon=f"{ICON}.icns",
         bundle_identifier="org.hakai.habitat-mapper",
         version=app_version,
         info_plist={

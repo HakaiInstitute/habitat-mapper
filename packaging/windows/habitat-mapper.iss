@@ -24,6 +24,7 @@ OutputBaseFilename=Habitat-Mapper-{#AppVersion}-windows-x64-setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\icons\habitat-mapper.ico
 UninstallDisplayIcon={app}\Habitat-Mapper.exe
 
 [Files]
