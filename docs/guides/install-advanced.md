@@ -1,6 +1,6 @@
 # Install for Python Users
 
-Habitat-Mapper is published on [PyPI](https://pypi.org/project/habitat-mapper) and supports Python 3.11 to 3.14.
+Habitat-Mapper is published on [PyPI](https://pypi.org/project/habitat-mapper) and supports Python 3.11.5 to 3.14.
 Install it into a virtual environment so its dependencies don't conflict with system packages.
 
 === "uv project"

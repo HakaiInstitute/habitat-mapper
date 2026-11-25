@@ -4,7 +4,7 @@ version = "0.18.0a1"
 description = "Habitat segmentation with AI"
 readme = "README.md"
 authors = [{ name = "Taylor Denouden", email = "taylor.denouden@hakai.org" }]
-requires-python = ">=3.11,<3.15"
+requires-python = ">=3.11.5,<3.15"
 license = "MIT"
 dependencies = [
     "cyclopts>=4.23.0",
