@@ -11,16 +11,20 @@ import rasterio
 from rasterio.enums import Resampling
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from rasterio.windows import Window
+
+    from habitat_mapper.config import OutputClass
 
 # Largest dimension of previews, in pixels
 PREVIEW_SIZE = 2048
 # Haze over the parts of a live preview that the model has seen but that aren't finished yet
 PENDING_RGBA = np.array([255, 255, 255, 90], dtype=np.uint8)
 
-# Colours for class values 1-10 of a segmentation. Class 0 and nodata are transparent
+# Colours for class values 1-10 of a segmentation, for models that don't name their own. Class 0 and nodata are
+# transparent
 CLASS_COLOURS = np.array(
     [
         (0, 0, 0),
@@ -37,6 +41,27 @@ CLASS_COLOURS = np.array(
     ],
     dtype=np.uint8,
 )
+
+
+def class_palette(classes: Sequence[OutputClass] = ()) -> np.ndarray:
+    """Look-up table of colours for every class value a uint8 segmentation can hold.
+
+    Args:
+        classes: Classes the model names, whose colours replace the defaults for their values.
+
+    Returns:
+        A (256, 3) uint8 array of RGB colours, indexed by class value.
+    """
+    palette = np.full((256, 3), 255, dtype=np.uint8)
+    palette[: len(CLASS_COLOURS)] = CLASS_COLOURS
+    for output_class in classes:
+        if output_class.value < len(palette):
+            hex_colour = output_class.colour.removeprefix("#")
+            palette[output_class.value] = [int(hex_colour[i : i + 2], 16) for i in (0, 2, 4)]
+    return palette
+
+
+DEFAULT_PALETTE = class_palette()
 
 
 def preview_shape(height: int, width: int, max_size: int = PREVIEW_SIZE) -> tuple[int, int]:
@@ -96,18 +121,19 @@ def read_input_preview(path: Path, max_size: int = PREVIEW_SIZE, band_order: lis
     return np.ascontiguousarray(np.moveaxis(data, 0, -1))
 
 
-def colourise(classes: np.ndarray, nodata: float | None) -> np.ndarray:
+def colourise(classes: np.ndarray, nodata: float | None, palette: np.ndarray = DEFAULT_PALETTE) -> np.ndarray:
     """Colour a segmentation for drawing over its image.
 
     Args:
         classes: (height, width) array of class values.
         nodata: Value for pixels outside the image, if any.
+        palette: Colour of each class value, from class_palette.
 
     Returns:
         A (height, width, 4) uint8 RGBA array, transparent where the class is 0 or nodata.
     """
     rgba = np.zeros((*classes.shape, 4), dtype=np.uint8)
-    rgba[..., :3] = CLASS_COLOURS[np.clip(classes, 0, len(CLASS_COLOURS) - 1)]
+    rgba[..., :3] = palette[np.clip(classes, 0, len(palette) - 1)]
     visible = classes != 0
     if nodata is not None:
         visible &= classes != nodata
@@ -115,12 +141,13 @@ def colourise(classes: np.ndarray, nodata: float | None) -> np.ndarray:
     return rgba
 
 
-def read_output_preview(path: Path, max_size: int = PREVIEW_SIZE) -> np.ndarray:
+def read_output_preview(path: Path, max_size: int = PREVIEW_SIZE, palette: np.ndarray = DEFAULT_PALETTE) -> np.ndarray:
     """Read a segmentation output as a colour overlay.
 
     Args:
         path: Segmentation GeoTIFF written by Habitat-Mapper.
         max_size: Largest dimension of the preview, in pixels.
+        palette: Colour of each class value, from class_palette.
 
     Returns:
         A (height, width, 4) uint8 RGBA array, transparent where the class is 0 or nodata.
@@ -129,7 +156,7 @@ def read_output_preview(path: Path, max_size: int = PREVIEW_SIZE) -> np.ndarray:
         height, width = preview_shape(src.height, src.width, max_size)
         classes = src.read(1, out_shape=(height, width), resampling=Resampling.nearest)
         nodata = src.nodata
-    return colourise(classes, nodata)
+    return colourise(classes, nodata, palette)
 
 
 class LiveOverlay:
@@ -145,7 +172,14 @@ class LiveOverlay:
         rgba: (height, width, 4) uint8 preview, the same size as the preview of the input image.
     """
 
-    def __init__(self, height: int, width: int, nodata: float | None, max_size: int = PREVIEW_SIZE) -> None:
+    def __init__(
+        self,
+        height: int,
+        width: int,
+        nodata: float | None,
+        max_size: int = PREVIEW_SIZE,
+        palette: np.ndarray = DEFAULT_PALETTE,
+    ) -> None:
         """Start an empty preview.
 
         Args:
@@ -153,11 +187,13 @@ class LiveOverlay:
             width: Width of the image being processed, in pixels.
             nodata: Value the result uses for pixels outside the image.
             max_size: Largest dimension of the preview, in pixels.
+            palette: Colour of each class value, from class_palette.
         """
         preview_height, preview_width = preview_shape(height, width, max_size)
         self._scale_y = preview_height / height
         self._scale_x = preview_width / width
         self._nodata = nodata
+        self._palette = palette
         self.rgba = np.zeros((preview_height, preview_width, 4), dtype=np.uint8)
         self._written = np.zeros((preview_height, preview_width), dtype=bool)
 
@@ -203,5 +239,5 @@ class LiveOverlay:
         """
         left, top, right, bottom = self.to_preview(window)
         small = cv2.resize(classes, (right - left, bottom - top), interpolation=cv2.INTER_NEAREST)
-        self.rgba[top:bottom, left:right] = colourise(small, self._nodata)
+        self.rgba[top:bottom, left:right] = colourise(small, self._nodata, self._palette)
         self._written[top:bottom, left:right] = True

@@ -9,7 +9,7 @@ from loguru import logger
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, SignalInstance, Slot
 
 from habitat_mapper.gui.batch import Status
-from habitat_mapper.gui.preview import LiveOverlay
+from habitat_mapper.gui.preview import LiveOverlay, class_palette
 from habitat_mapper.processing import ImageProcessor, ProcessingCancelled
 
 if TYPE_CHECKING:
@@ -60,14 +60,15 @@ class _QtProgressReporter:
 class _LiveObserver:
     """ProcessingObserver that draws the result into a LiveOverlay and reports the tiles being processed."""
 
-    def __init__(self, worker: SegmentWorker, row: int, nodata: float) -> None:
+    def __init__(self, worker: SegmentWorker, row: int, nodata: float, palette: np.ndarray) -> None:
         self._worker = worker
         self._row = row
         self._nodata = nodata
+        self._palette = palette
         self._overlay: LiveOverlay | None = None
 
     def image_started(self, height: int, width: int) -> None:
-        self._overlay = LiveOverlay(height, width, self._nodata)
+        self._overlay = LiveOverlay(height, width, self._nodata, palette=self._palette)
         self._worker.live_started.emit(self._row, self._overlay)
 
     def batch_started(self, windows: Sequence[Window]) -> None:
@@ -129,6 +130,7 @@ class SegmentWorker(QObject):
                 self.item_finished.emit(row, Status.FAILED, f"Could not load the model: {e}")
             return
 
+        palette = class_palette(self._model.cfg.classes)
         for row, input_path, output_path in self._jobs:
             if self._cancelled.is_set():
                 self.item_finished.emit(row, Status.CANCELLED, "")
@@ -139,7 +141,7 @@ class SegmentWorker(QObject):
             try:
                 processor = ImageProcessor.from_model(self._model, quiet=True, **self._options)
                 processor.reporter_cls = lambda: _QtProgressReporter(self.progress)
-                observer = _LiveObserver(self, row, self._model.cfg.nodata_value)
+                observer = _LiveObserver(self, row, self._model.cfg.nodata_value, palette)
                 processor.run(input_path, output_path, cancel=self._cancelled.is_set, observer=observer)
             except ProcessingCancelled:
                 logger.info(f"Cancelled {input_path.name}")

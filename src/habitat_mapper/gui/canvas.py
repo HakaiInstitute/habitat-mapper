@@ -4,20 +4,32 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap, QTransform
-from PySide6.QtWidgets import QGraphicsItem, QGraphicsPixmapItem, QGraphicsRectItem, QGraphicsScene, QGraphicsView
+from PySide6.QtCore import QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap, QTransform
+from PySide6.QtWidgets import (
+    QGraphicsItem,
+    QGraphicsPixmapItem,
+    QGraphicsRectItem,
+    QGraphicsScene,
+    QGraphicsView,
+    QHBoxLayout,
+    QToolButton,
+    QWidget,
+)
+
+from habitat_mapper.gui import theme
 
 if TYPE_CHECKING:
     import numpy as np
-    from PySide6.QtGui import QMouseEvent, QResizeEvent, QWheelEvent
+    from PySide6.QtGui import QKeyEvent, QMouseEvent, QPaintEvent, QResizeEvent, QWheelEvent
 
 _ZOOM_STEP = 1.25
-_TILE_PEN = QPen(QColor(255, 255, 255, 220), 2)
+_TILE_PEN = QPen(QColor(theme.OCHRE), 2)
 _TILE_PEN.setCosmetic(True)  # Same width at every zoom level
 # For the part of a tile past the edge of the image, which the model sees as padding
 _OFF_IMAGE_PEN = QPen(_TILE_PEN)
 _OFF_IMAGE_PEN.setStyle(Qt.PenStyle.DashLine)
+_CONTROLS_MARGIN = 10
 
 
 def _to_pixmap(array: np.ndarray) -> QPixmap:
@@ -29,7 +41,7 @@ def _to_pixmap(array: np.ndarray) -> QPixmap:
 
 
 class PreviewCanvas(QGraphicsView):
-    """Shows an image with an optional overlay. Scroll to zoom, drag to pan, double click to fit."""
+    """Shows an image with an optional overlay. Scroll to zoom, drag to pan, double click to fit, hold Space to hide."""
 
     def __init__(self) -> None:
         """Create an empty canvas."""
@@ -38,13 +50,44 @@ class PreviewCanvas(QGraphicsView):
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        self.setBackgroundBrush(Qt.GlobalColor.darkGray)
+        self.setBackgroundBrush(QColor(theme.TEAL_DEEP))
+        self.setFrameShape(QGraphicsView.Shape.NoFrame)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        # Files dropped on the canvas are handled by the window
+        self.setAcceptDrops(False)
+        self.viewport().setAcceptDrops(False)
         self._image = QGraphicsPixmapItem()
         self._overlay = QGraphicsPixmapItem()
         self.scene().addItem(self._image)
         self.scene().addItem(self._overlay)
         self._tiles: list[QGraphicsRectItem] = []
         self._fitted = True
+        self._opacity = 1.0
+        self._placeholder = ("", "")
+        self._drop_highlight = False
+        self._controls = self._build_controls()
+
+    def _build_controls(self) -> QWidget:
+        controls = QWidget(self)
+        layout = QHBoxLayout(controls)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        for text, tip, slot in [
+            ("−", "Zoom out", lambda: self._zoom(1 / _ZOOM_STEP)),
+            ("+", "Zoom in", lambda: self._zoom(_ZOOM_STEP)),
+            ("Fit", "Fit the whole image (or double click)", self.fit),
+        ]:
+            button = QToolButton()
+            button.setObjectName("canvasButton")
+            button.setText(text)
+            button.setToolTip(tip)
+            button.setAccessibleName(tip)
+            button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+            button.clicked.connect(slot)
+            layout.addWidget(button)
+        controls.adjustSize()
+        controls.hide()
+        return controls
 
     def set_images(self, image: np.ndarray | None, overlay: np.ndarray | None = None) -> None:
         """Show new images, zoomed to fit.
@@ -57,7 +100,32 @@ class PreviewCanvas(QGraphicsView):
         self.set_overlay(overlay)
         self.set_tiles([])
         self.scene().setSceneRect(self._image.boundingRect())
+        self._controls.setVisible(image is not None)
         self.fit()
+        self.viewport().update()
+
+    def has_image(self) -> bool:
+        """Check whether the canvas is showing an image.
+
+        Returns:
+            True if an image is shown.
+        """
+        return not self._image.pixmap().isNull()
+
+    def set_placeholder(self, title: str, detail: str = "") -> None:
+        """Set the message shown while there's no image.
+
+        Args:
+            title: Main line, e.g. what to do first.
+            detail: Smaller second line.
+        """
+        self._placeholder = (title, detail)
+        self.viewport().update()
+
+    def set_drop_highlight(self, on: bool) -> None:
+        """Outline the canvas while files are dragged over the window, to show they can be dropped."""
+        self._drop_highlight = on
+        self.viewport().update()
 
     def set_overlay(self, overlay: np.ndarray | None) -> None:
         """Replace the overlay, keeping the zoom.
@@ -101,6 +169,7 @@ class PreviewCanvas(QGraphicsView):
 
     def set_overlay_opacity(self, opacity: float) -> None:
         """Set how opaque the overlay is, from 0 to 1."""
+        self._opacity = opacity
         self._overlay.setOpacity(opacity)
 
     def fit(self) -> None:
@@ -108,8 +177,17 @@ class PreviewCanvas(QGraphicsView):
         self.fitInView(self._image, Qt.AspectRatioMode.KeepAspectRatio)
         self._fitted = True
 
+    def _zoom(self, factor: float) -> None:
+        anchor = self.transformationAnchor()
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.scale(factor, factor)
+        self.setTransformationAnchor(anchor)
+        self._fitted = False
+
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
         """Zoom in or out around the mouse."""
+        if not self.has_image():
+            return
         factor = _ZOOM_STEP if event.angleDelta().y() > 0 else 1 / _ZOOM_STEP
         self.scale(factor, factor)
         self._fitted = False
@@ -118,8 +196,72 @@ class PreviewCanvas(QGraphicsView):
         """Zoom to fit."""
         self.fit()
 
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        """Hide the result while Space is held, to see the image under it."""
+        if event.key() == Qt.Key.Key_Space:
+            if not event.isAutoRepeat():
+                self._overlay.setOpacity(0)
+            return
+        super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:  # noqa: N802
+        """Show the result again when Space is let go."""
+        if event.key() == Qt.Key.Key_Space:
+            if not event.isAutoRepeat():
+                self._overlay.setOpacity(self._opacity)
+            return
+        super().keyReleaseEvent(event)
+
+    def focusOutEvent(self, event: object) -> None:  # noqa: N802
+        """Don't leave the result hidden if focus moves away while Space is held."""
+        self._overlay.setOpacity(self._opacity)
+        super().focusOutEvent(event)  # type: ignore[arg-type]
+
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         """Keep the image fitted while the window resizes, unless the user has zoomed."""
         super().resizeEvent(event)
+        self._controls.move(
+            self.width() - self._controls.width() - _CONTROLS_MARGIN,
+            self.height() - self._controls.height() - _CONTROLS_MARGIN,
+        )
         if self._fitted:
             self.fit()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Draw the image, then the empty state message and the drop outline over it when needed."""
+        super().paintEvent(event)
+        if self.has_image() and not self._drop_highlight:
+            return
+        painter = QPainter(self.viewport())
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        area = QRectF(self.viewport().rect()).adjusted(14, 14, -14, -14)
+        if self._drop_highlight:
+            pen = QPen(QColor(theme.OCHRE), 2, Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(QColor(214, 176, 74, 28))
+            painter.drawRoundedRect(area, 10, 10)
+        if not self.has_image():
+            self._paint_placeholder(painter, area)
+        painter.end()
+
+    def _paint_placeholder(self, painter: QPainter, area: QRectF) -> None:
+        title, detail = self._placeholder
+        title_font = QFont(self.font())
+        title_font.setPointSizeF(title_font.pointSizeF() * 1.5)
+        title_font.setWeight(QFont.Weight.DemiBold)
+        detail_font = QFont(self.font())
+        middle = area.center().y()
+
+        painter.setFont(title_font)
+        painter.setPen(QColor(theme.WHITE))
+        title_rect = QRectF(area.left(), middle - 40, area.width(), 34)
+        painter.drawText(title_rect, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom, title)
+        if detail:
+            painter.setFont(detail_font)
+            painter.setPen(QColor(255, 255, 255, 170))
+            detail_rect = QRectF(area.left() + 24, middle + 2, area.width() - 48, 60)
+            painter.drawText(
+                detail_rect,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap,
+                detail,
+            )
