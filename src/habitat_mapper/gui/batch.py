@@ -30,12 +30,14 @@ class BatchItem:
         status: Processing state.
         output_path: Where the segmentation was written, once it is done.
         error: Why processing failed, if it did.
+        model_name: Model the output was made with, to colour and label it.
     """
 
     input_path: Path
     status: Status = Status.QUEUED
     output_path: Path | None = None
     error: str | None = None
+    model_name: str | None = None
 
 
 def output_path_for(input_path: Path, output_dir: Path, model_name: str, revision: str) -> Path:

@@ -20,6 +20,14 @@ if TYPE_CHECKING:
     from habitat_mapper.reader import ImageReader
 
 
+class OutputClass(BaseModel):
+    """A class value a model writes to its output, with a name and colour for showing it."""
+
+    value: Annotated[int, Field(gt=0, description="Pixel value of the class in the output raster")]
+    name: Annotated[str, "Plain name of the class, e.g. 'Giant kelp'"]
+    colour: Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$", description="Colour to draw the class in, as #RRGGBB")]
+
+
 class ModelConfig(BaseModel):
     """ONNXModel configuration for ONNX semantic segmentation models."""
 
@@ -36,6 +44,10 @@ class ModelConfig(BaseModel):
         ),
     ]
     beta: bool = False
+    classes: Annotated[
+        list[OutputClass],
+        "Classes the model outputs, other than background (0). Used to colour and label previews.",
+    ] = Field(default_factory=list)
     dependencies: Annotated[
         list[str],
         "List of files to download (URLs or local paths). Downloaded to model-specific cache subdirectory.",

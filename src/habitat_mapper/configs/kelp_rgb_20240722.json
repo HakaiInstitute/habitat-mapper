@@ -3,6 +3,18 @@
   "name": "kelp-rgb",
   "revision": "20240722",
   "description": "Kelp segmentation model for RGB drone imagery.",
+  "classes": [
+    {
+      "value": 1,
+      "name": "Giant kelp",
+      "colour": "#F2C230"
+    },
+    {
+      "value": 2,
+      "name": "Bull kelp",
+      "colour": "#E8434F"
+    }
+  ],
   "dependencies": [
     "https://huggingface.co/HakaiInstitute/kelp-rgb/resolve/20240722/model.onnx"
   ],

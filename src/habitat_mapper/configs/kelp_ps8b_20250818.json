@@ -2,6 +2,13 @@
   "name": "kelp-ps8b",
   "revision": "20250818",
   "description": "Kelp segmentation model for 8-band PlanetScope imagery.",
+  "classes": [
+    {
+      "value": 1,
+      "name": "Kelp",
+      "colour": "#F2C230"
+    }
+  ],
   "dependencies": [
     "https://huggingface.co/HakaiInstitute/kelp-ps8b/resolve/20250818/model.onnx"
   ],

@@ -59,5 +59,8 @@ if sys.platform == "darwin":
             "CFBundleShortVersionString": app_version,
             "NSHighResolutionCapable": True,
             "LSMinimumSystemVersion": "14.0",
+            # BUNDLE takes console=True from the hab CLI, the last executable in the collection, and marks the
+            # app background only, which hides it from the Dock, the app switcher and the menu bar
+            "LSBackgroundOnly": False,
         },
     )

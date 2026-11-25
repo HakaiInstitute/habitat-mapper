@@ -831,7 +831,7 @@ wheels = [
 
 [[package]]
 name = "habitat-mapper"
-version = "0.18.0a1"
+version = "0.18.0a3"
 source = { editable = "." }
 dependencies = [
     { name = "cyclopts" },

@@ -11,9 +11,20 @@ import rasterio
 import requests
 from rasterio.windows import Window
 
+from habitat_mapper.config import OutputClass
 from habitat_mapper.gui.batch import BatchItem, existing_outputs, output_path_for
-from habitat_mapper.gui.preview import PENDING_RGBA, LiveOverlay, read_input_preview, read_output_preview
+from habitat_mapper.gui.model_info import accepted_inputs, default_band_order, input_description
+from habitat_mapper.gui.preview import (
+    DEFAULT_PALETTE,
+    PENDING_RGBA,
+    LiveOverlay,
+    class_palette,
+    colourise,
+    read_input_preview,
+    read_output_preview,
+)
 from habitat_mapper.gui.updates import newer_release
+from habitat_mapper.registry import model_registry
 from tests.test_blank_tile_skipping import _write_raster
 
 
@@ -124,3 +135,47 @@ def test_tiles_past_the_edge_of_the_image() -> None:
     assert overlay.to_preview(tile) == (80, 80, 100, 100)
     overlay.mark_pending(tile)
     assert np.all(overlay.rgba[80:, 80:] == PENDING_RGBA)
+
+
+def test_model_configs_name_their_classes() -> None:
+    for name in model_registry.list_model_names():
+        classes = model_registry[name].cfg.classes
+        assert classes, f"{name} has no classes"
+        assert len({c.value for c in classes}) == len(classes)
+
+
+def test_class_palette_uses_model_colours_and_falls_back() -> None:
+    palette = class_palette([OutputClass(value=2, name="Bull kelp", colour="#E8434F")])
+
+    assert palette.shape == (256, 3)
+    assert list(palette[2]) == [0xE8, 0x43, 0x4F]
+    assert list(palette[1]) == list(DEFAULT_PALETTE[1])
+
+
+def test_colourise_with_palette() -> None:
+    palette = class_palette([OutputClass(value=1, name="Kelp", colour="#F2C230")])
+
+    rgba = colourise(np.array([[0, 1]], dtype=np.uint8), nodata=None, palette=palette)
+
+    assert list(rgba[0, 0]) == [0, 0, 0, 0]
+    assert list(rgba[0, 1]) == [0xF2, 0xC2, 0x30, 255]
+
+
+def test_input_description_and_default_band_order() -> None:
+    assert input_description(model_registry["kelp-rgb"].cfg) == "RGB GeoTIFF"
+    assert input_description(model_registry["kelp-rgbi"].cfg) == "RGB + near-infrared GeoTIFF"
+    assert input_description(model_registry["kelp-skema"].cfg) == "Sentinel-2 L2A .SAFE folder"
+    assert default_band_order(model_registry["kelp-rgbi"].cfg) == "1, 2, 3, 4"
+
+
+def test_accepted_inputs(tmp_path: Path) -> None:
+    tif = tmp_path / "a.tif"
+    tiff = tmp_path / "b.TIFF"
+    other = tmp_path / "c.jpg"
+    safe = tmp_path / "S2B_X.SAFE"
+    for path in (tif, tiff, other):
+        path.touch()
+    safe.mkdir()
+
+    assert accepted_inputs([tif, other, safe, tiff], safe=False) == [tif, tiff]
+    assert accepted_inputs([tif, other, safe, tiff], safe=True) == [safe]

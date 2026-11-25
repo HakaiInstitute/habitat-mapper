@@ -2,6 +2,13 @@
   "name": "mussel-rgb",
   "revision": "20250711",
   "description": "Mussel segmentation model for RGB drone imagery.",
+  "classes": [
+    {
+      "value": 1,
+      "name": "Mussels",
+      "colour": "#8C7CFF"
+    }
+  ],
   "dependencies": [
     "https://huggingface.co/HakaiInstitute/mussel-rgb/resolve/20250711/model.onnx"
   ],

@@ -46,9 +46,10 @@ Download the installer for your computer from the
 ## 3. Segment your images
 
 1. Choose a **Model**. See [Models](../models/index.md) to pick the right one for your imagery. The newest
-   **Revision** of the model is chosen for you.
-2. Click **Add images…** to add GeoTIFFs. For the `kelp-skema` model, click **Add SAFE folder…** instead, to add
-   Sentinel-2 L2A `.SAFE` folders. You can add as many as you like.
+   **Revision** of the model is chosen for you. Under the model, the app shows what imagery it's for and
+   whether it's downloaded yet.
+2. Drag GeoTIFFs onto the window, or click **Add GeoTIFFs…**. For the `kelp-skema` model, drag in Sentinel-2 L2A
+   `.SAFE` folders or click **Add SAFE folder…** instead. You can add as many as you like.
 3. Choose an **Output folder**. Each result is saved there named after the image, model and revision, e.g.
    `survey_kelp_rgb_20240722.tif`.
 4. Click **Run**.
@@ -56,17 +57,24 @@ Download the installer for your computer from the
 The model downloads the first time you use it, which needs an internet connection. To work offline later, download
 models ahead of time from **Tools → Models…**.
 
-While it runs, the bar at the bottom shows progress through the current image and the hardware it's running on. Click
-**Cancel** to stop after the current tiles. If an image fails, the others still run; hover over its status to see why.
+While it runs, the bar at the bottom shows which image it's on, progress through it, and the hardware it's running
+on. The image's row in the list shows its progress too. Click **Cancel** to stop after the current tiles. If an image
+fails, the others still run; select it to see why, or right click it and choose **Copy error**.
+
+The Habitat-Mapper icon in the menu bar (macOS) or notification area (Windows) also shows progress, so you can work in
+other apps while it runs. It tells you when the run finishes. When it's done, click **Open output folder** to see the
+results. To find a single result, double click its row, or right click it and choose **Show result in folder**.
 
 While an image is processed, the preview shows its result filling in. The white box is the tile the model is
-looking at, dashed where it extends past the edge of your image. Tiles overlap, and predictions where they overlap
+looking at, outlined in gold and dashed where it extends past the edge of your image. Tiles overlap, and predictions where they overlap
 are blended so that tile edges don't show, so most of a tile isn't finished until the tiles to its right and below
 are done. Those parts are covered in a light haze until then. The finished result replaces the preview at the end,
 with the median blur and morphological filter applied, if you turned them on.
 
 Select an image in the list to preview it, with its result on top once it's done. Scroll to zoom, drag to pan, and
-double click to fit the image again. The **Result opacity** slider fades the result in and out.
+double click or click **Fit** to fit the image again. The **Result opacity** slider fades the result in and out, and
+holding Space hides it while you look at the image underneath. The key under the preview shows what each colour
+means.
 
 **Advanced options** has the tile size, band order and filter settings of [`hab segment`](../reference/cli.md).
 [Tune Processing](../guides/tune-processing.md) explains them. Leave them alone unless you need them.
