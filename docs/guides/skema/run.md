@@ -1,13 +1,14 @@
 # Run SKeMa
 
-Pass the unzipped `.SAFE` folder to `hab segment` as the input, with `kelp-skema` as the model:
+Pass the `.zip` you downloaded, or the `.SAFE` folder extracted from it, to `hab segment` as the input, with
+`kelp-skema` as the model:
 
 ```bash
-hab segment kelp-skema /path/to/scene.SAFE kelp_output.tif
+hab segment kelp-skema /path/to/scene.SAFE.zip kelp_output.tif
 ```
 
-Habitat-Mapper reads the Sentinel-2 bands it needs straight from the `.SAFE` folder, so you don't need to extract
-or stack bands yourself. The output is a GeoTIFF on the Sentinel-2 10 m grid, in which `1` is kelp and `0` is
+Habitat-Mapper reads the Sentinel-2 bands it needs straight from the `.zip` or `.SAFE` folder, so you don't need to
+extract or stack bands yourself. The output is a GeoTIFF on the Sentinel-2 10 m grid, in which `1` is kelp and `0` is
 background.
 
 This runs the latest SKeMa revision. To reproduce results made with an earlier revision, pass it with `--rev`, for
@@ -19,27 +20,30 @@ example `--rev 20260414`. See [revisions](../../models/kelp-satellite.md#revisio
     [Kelp: Satellite](../../models/kelp-satellite.md#auxiliary-data-models).
 
 !!! tip "Use quotes if the path contains spaces"
-    `hab segment kelp-skema "C:\My Data\scene.SAFE" kelp_output.tif`
+    `hab segment kelp-skema "C:\My Data\scene.SAFE.zip" kelp_output.tif`
 
 ## Several scenes
 
-To map several scenes, for example a time series or neighbouring tiles, loop over the `.SAFE` folders:
+To map several scenes, for example a time series or neighbouring tiles, loop over the `.zip` files:
 
 === "Windows (PowerShell)"
 
     ```powershell
-    Get-ChildItem -Directory *.SAFE | ForEach-Object {
-        hab segment kelp-skema $_.FullName "$($_.BaseName)_kelp.tif" --quiet
+    Get-ChildItem *.zip | ForEach-Object {
+        hab segment kelp-skema $_.FullName "$($_.BaseName -replace '\.SAFE$')_kelp.tif" --quiet
     }
     ```
 
 === "macOS / Linux"
 
     ```bash
-    for scene in ./*.SAFE; do
-        hab segment kelp-skema "$scene" "$(basename "$scene" .SAFE)_kelp.tif" --quiet
+    for scene in ./*.zip; do
+        name="$(basename "$scene" .zip)"
+        hab segment kelp-skema "$scene" "${name%.SAFE}_kelp.tif" --quiet
     done
     ```
+
+For extracted `.SAFE` folders, loop over `*.SAFE` instead.
 
 See [Process Many Images](../batch-processing.md) for more on batch processing.
 

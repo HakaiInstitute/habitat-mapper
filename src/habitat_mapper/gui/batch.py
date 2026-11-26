@@ -26,7 +26,7 @@ class BatchItem:
     """An image in the batch queue.
 
     Attributes:
-        input_path: GeoTIFF or Sentinel-2 .SAFE directory to segment.
+        input_path: GeoTIFF, or Sentinel-2 .SAFE directory or .zip, to segment.
         status: Processing state.
         output_path: Where the segmentation was written, once it is done.
         error: Why processing failed, if it did.
@@ -40,11 +40,24 @@ class BatchItem:
     model_name: str | None = None
 
 
+def output_stem(input_path: Path) -> str:
+    """Name an input's results start with, which is the same for a .SAFE folder and its .zip.
+
+    Returns:
+        e.g. `S2B_X` for `S2B_X.SAFE`, `S2B_X.SAFE.zip` or `S2B_X.zip`.
+    """
+    stem = input_path.stem
+    # S2B_X.SAFE.zip is named like the S2B_X.SAFE folder inside it
+    if input_path.suffix.lower() == ".zip" and stem.upper().endswith(".SAFE"):
+        stem = stem[: -len(".SAFE")]
+    return stem
+
+
 def output_path_for(input_path: Path, output_dir: Path, model_name: str, revision: str) -> Path:
     """Name the output for an input image, e.g. `survey_kelp_rgb_20240722.tif`.
 
     Args:
-        input_path: GeoTIFF or Sentinel-2 .SAFE directory.
+        input_path: GeoTIFF, or Sentinel-2 .SAFE directory or .zip.
         output_dir: Folder the batch writes to.
         model_name: Name of the model that produces the output.
         revision: Revision of the model.
@@ -52,7 +65,7 @@ def output_path_for(input_path: Path, output_dir: Path, model_name: str, revisio
     Returns:
         The output path.
     """
-    return output_dir / f"{input_path.stem}_{model_name.replace('-', '_')}_{revision}.tif"
+    return output_dir / f"{output_stem(input_path)}_{model_name.replace('-', '_')}_{revision}.tif"
 
 
 def existing_outputs(items: list[BatchItem], output_dir: Path, model_name: str, revision: str) -> list[Path]:

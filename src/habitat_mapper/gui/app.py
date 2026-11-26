@@ -54,7 +54,7 @@ from PySide6.QtWidgets import (
 from habitat_mapper import __version__
 from habitat_mapper.accelerators import select_accelerators
 from habitat_mapper.gui import theme
-from habitat_mapper.gui.batch import BatchItem, Status, existing_outputs, output_path_for
+from habitat_mapper.gui.batch import BatchItem, Status, existing_outputs, output_path_for, output_stem
 from habitat_mapper.gui.canvas import PreviewCanvas
 from habitat_mapper.gui.diagnostics import LOG_DIR, add_log_file, diagnostics_report
 from habitat_mapper.gui.model_info import accepted_inputs, default_band_order, input_description, reads_safe
@@ -84,6 +84,7 @@ if TYPE_CHECKING:
 _LIVE_REFRESH_MS = 200
 DOCS_URL = "https://habitat-mapper.readthedocs.io"
 _IMAGE_FILTER = "GeoTIFF images (*.tif *.tiff);;All files (*)"
+_SAFE_ZIP_FILTER = "Sentinel-2 SAFE zips (*.zip);;All files (*)"
 # Fraction of an image done, stored on its status cell while it is processed
 _PROGRESS_ROLE = Qt.ItemDataRole.UserRole + 1
 _LIVE_HELP = (
@@ -237,9 +238,13 @@ class MainWindow(QMainWindow):
         self._add_images_action = QAction("Add GeoTIFFs…", self)
         self._add_images_action.setShortcut(QKeySequence.StandardKey.Open)
         self._add_images_action.triggered.connect(self._add_images)
-        self._add_safe_action = QAction("Add Sentinel-2 SAFE folder…", self)
+        self._add_safe_zip_action = QAction("Add Sentinel-2 zip downloads…", self)
+        self._add_safe_zip_action.setShortcut(QKeySequence.StandardKey.Open)
+        self._add_safe_zip_action.triggered.connect(self._add_safe_zips)
+        self._add_safe_action = QAction("Add extracted Sentinel-2 .SAFE folder…", self)
         self._add_safe_action.triggered.connect(self._add_safe_folder)
         file_menu.addAction(self._add_images_action)
+        file_menu.addAction(self._add_safe_zip_action)
         file_menu.addAction(self._add_safe_action)
         file_menu.addSeparator()
         quit_action = QAction("Quit", self)
@@ -412,10 +417,16 @@ class MainWindow(QMainWindow):
         self._queue.customContextMenuRequested.connect(self._queue_menu)
         self._queue.cellDoubleClicked.connect(self._open_row)
 
-        # Only one of the add buttons is shown, depending on what the model reads
+        # Only the add buttons for what the model reads are shown. Sentinel-2 products come as zips or extracted
+        # folders, which need different file dialogs, so they get a button each. The model already says it reads
+        # Sentinel-2, so the labels only name the format, keeping the row from crowding Remove and Clear
         self._add_images_button = QPushButton("Add GeoTIFFs…")
         self._add_images_button.clicked.connect(self._add_images)
-        self._add_safe_button = QPushButton("Add SAFE folder…")
+        self._add_safe_zip_button = QPushButton("Add .SAFE.zip…")
+        self._add_safe_zip_button.setToolTip("Add Sentinel-2 products as downloaded, without extracting them")
+        self._add_safe_zip_button.clicked.connect(self._add_safe_zips)
+        self._add_safe_button = QPushButton("Add .SAFE…")
+        self._add_safe_button.setToolTip("Add an extracted Sentinel-2 .SAFE folder")
         self._add_safe_button.clicked.connect(self._add_safe_folder)
         self._remove_button = QPushButton("Remove")
         self._remove_button.clicked.connect(self._remove_selected)
@@ -423,6 +434,7 @@ class MainWindow(QMainWindow):
         self._clear_button.clicked.connect(self._clear_queue)
         buttons = QHBoxLayout()
         buttons.addWidget(self._add_images_button)
+        buttons.addWidget(self._add_safe_zip_button)
         buttons.addWidget(self._add_safe_button)
         buttons.addStretch(1)
         buttons.addWidget(self._remove_button)
@@ -639,15 +651,49 @@ class MainWindow(QMainWindow):
         if not path:
             return
         if not path.endswith(".SAFE"):
-            QMessageBox.warning(self, "Not a SAFE folder", "Choose a Sentinel-2 folder whose name ends in .SAFE.")
+            QMessageBox.warning(
+                self,
+                "Not a SAFE folder",
+                "Choose a Sentinel-2 folder whose name ends in .SAFE. For a .zip download, use Add .SAFE.zip… instead.",
+            )
             return
         self._add_paths([Path(path)])
 
-    def _add_paths(self, paths: list[Path]) -> None:
+    def _add_safe_zips(self) -> None:
+        chosen = [
+            Path(p) for p in QFileDialog.getOpenFileNames(self, "Add Sentinel-2 SAFE zips", "", _SAFE_ZIP_FILTER)[0]
+        ]
+        paths = accepted_inputs(chosen, safe=True)
+        rejected = len(chosen) - len(paths)
+        note = (
+            f"{rejected} file{'s' if rejected != 1 else ''} not added. Choose Sentinel-2 .SAFE.zip downloads. "
+            "A zip that won't add may be damaged or only partly downloaded."
+            if rejected
+            else ""
+        )
+        self._add_paths(paths, note)
+
+    def _add_paths(self, paths: list[Path], note: str = "") -> None:
+        """Queue images, skipping ones already queued.
+
+        Args:
+            paths: Images to queue.
+            note: Status message about paths the caller didn't pass on, shown alongside any about these.
+        """
         queued = {item.input_path for item in self._items}
+        # A .SAFE folder and its .zip give results with the same name, so only one of them is queued
+        stems = {output_stem(item.input_path) for item in self._items}
+        clashes = 0
+        added: list[Path] = []
         for path in paths:
             if path in queued:
                 continue
+            if output_stem(path) in stems:
+                clashes += 1
+                continue
+            queued.add(path)
+            stems.add(output_stem(path))
+            added.append(path)
             self._items.append(BatchItem(path))
             row = self._queue.rowCount()
             self._queue.insertRow(row)
@@ -655,11 +701,20 @@ class MainWindow(QMainWindow):
             name.setToolTip(str(path))
             self._queue.setItem(row, 0, name)
             self._set_status(row, Status.QUEUED)
-        if paths and not self._output_dir.text():
-            self._output_dir.setText(str(paths[0].parent))
-        if paths and not self._queue.selectedItems():
+        # Skipped paths are left out, so the results go beside an image that was queued
+        if added and not self._output_dir.text():
+            self._output_dir.setText(str(added[0].parent))
+        if added and not self._queue.selectedItems():
             self._queue.selectRow(self._queue.rowCount() - 1)
         self._update_queue_state()
+        messages = [note] if note else []
+        if clashes:
+            messages.append(
+                f"{clashes} item{'s' if clashes != 1 else ''} not added. An image with the same name is already "
+                "queued, and their results would overwrite each other."
+            )
+        if messages:
+            self.statusBar().showMessage(" ".join(messages), 8000)
 
     def _remove_rows(self, rows: set[int]) -> None:
         if self._thread is not None:
@@ -689,7 +744,10 @@ class MainWindow(QMainWindow):
         if not count:
             self._preview_label.setText("")
             if safe:
-                self._canvas.set_placeholder("Drop .SAFE folders here", "Or use Add SAFE folder… to choose them")
+                self._canvas.set_placeholder(
+                    "Drop .SAFE.zip files or .SAFE folders here",
+                    "Or use Add .SAFE.zip… or Add .SAFE… to choose them",
+                )
             else:
                 self._canvas.set_placeholder("Drop GeoTIFFs here", "Or use Add GeoTIFFs… to choose them")
         elif not self._canvas.has_image():
@@ -789,15 +847,12 @@ class MainWindow(QMainWindow):
         safe = reads_safe(self._current_cfg())
         paths = accepted_inputs(dropped, safe=safe)
         event.acceptProposedAction()
-        if paths:
-            self._add_paths(paths)
         skipped = len(dropped) - len(paths)
+        note = ""
         if skipped:
-            needs = "Sentinel-2 .SAFE folders" if safe else "GeoTIFF images (.tif or .tiff)"
-            self.statusBar().showMessage(
-                f"{skipped} item{'s' if skipped != 1 else ''} not added. {self._model.currentData()} reads {needs}.",
-                8000,
-            )
+            needs = "Sentinel-2 .SAFE.zip files or .SAFE folders" if safe else "GeoTIFF images (.tif or .tiff)"
+            note = f"{skipped} item{'s' if skipped != 1 else ''} not added. {self._model.currentData()} reads {needs}."
+        self._add_paths(paths, note)
 
     # Model options
 
@@ -818,7 +873,9 @@ class MainWindow(QMainWindow):
         self._add_images_button.setVisible(not safe)
         self._add_images_action.setVisible(not safe)
         self._add_safe_button.setVisible(safe)
+        self._add_safe_zip_button.setVisible(safe)
         self._add_safe_action.setVisible(safe)
+        self._add_safe_zip_action.setVisible(safe)
         self._revision_changed()
 
     def _revision_changed(self) -> None:

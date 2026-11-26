@@ -1,8 +1,8 @@
 # Downloading Sentinel-2 Data
 
-The SKeMa kelp models require **Sentinel-2 Level-2A (L2A)** satellite imagery in `.SAFE` folder
-format. This guide walks through acquiring that data from the Copernicus Data Space Ecosystem,
-which provides free access to the full Sentinel-2 archive.
+The SKeMa kelp models require **Sentinel-2 Level-2A (L2A)** satellite imagery, either as the `.zip`
+you download or the `.SAFE` folder inside it. This guide walks through acquiring that data from the
+Copernicus Data Space Ecosystem, which provides free access to the full Sentinel-2 archive.
 
 ## Step 1: Create a Copernicus Data Space Account
 
@@ -46,10 +46,10 @@ which provides free access to the full Sentinel-2 archive.
 
     ![Thumbnail preview and download icon](images/thumbnail_and_download.png)
 
-## Step 4: Extract the `.SAFE` Folder
+## Step 4 (optional): Extract the `.SAFE` Folder
 
-Sentinel-2 downloads arrive as `.zip` files. You must extract them before passing them to
-Habitat-Mapper.
+Sentinel-2 downloads arrive as `.zip` files. Habitat-Mapper reads these directly, so you can skip this step. Extract
+them only if you want to look at the files inside.
 
 === "Mac / Linux"
 
@@ -75,4 +75,4 @@ S2A_MSIL2A_20230801T193851_N0509_R042_T10UED_20230802T003016.SAFE/
 
 ## Next Step
 
-With your `.SAFE` folder ready, continue to [Run SKeMa](run.md).
+With your `.zip` or `.SAFE` folder ready, continue to [Run SKeMa](run.md).

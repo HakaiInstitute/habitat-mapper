@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -12,7 +13,7 @@ import requests
 from rasterio.windows import Window
 
 from habitat_mapper.config import OutputClass
-from habitat_mapper.gui.batch import BatchItem, existing_outputs, output_path_for
+from habitat_mapper.gui.batch import BatchItem, existing_outputs, output_path_for, output_stem
 from habitat_mapper.gui.model_info import accepted_inputs, default_band_order, input_description
 from habitat_mapper.gui.preview import (
     DEFAULT_PALETTE,
@@ -26,6 +27,7 @@ from habitat_mapper.gui.preview import (
 from habitat_mapper.gui.updates import newer_release
 from habitat_mapper.registry import model_registry
 from tests.test_blank_tile_skipping import _write_raster
+from tests.test_safe_reader import _make_safe, _zip
 
 
 def test_output_path_for_file_and_safe_folder() -> None:
@@ -35,6 +37,14 @@ def test_output_path_for_file_and_safe_folder() -> None:
     )
     assert (
         output_path_for(Path("/data/S2B_MSIL2A_X.SAFE"), out, "kelp-skema", "20261014")
+        == out / "S2B_MSIL2A_X_kelp_skema_20261014.tif"
+    )
+    assert (
+        output_path_for(Path("/data/S2B_MSIL2A_X.SAFE.zip"), out, "kelp-skema", "20261014")
+        == out / "S2B_MSIL2A_X_kelp_skema_20261014.tif"
+    )
+    assert (
+        output_path_for(Path("/data/S2B_MSIL2A_X.zip"), out, "kelp-skema", "20261014")
         == out / "S2B_MSIL2A_X_kelp_skema_20261014.tif"
     )
 
@@ -164,7 +174,7 @@ def test_colourise_with_palette() -> None:
 def test_input_description_and_default_band_order() -> None:
     assert input_description(model_registry["kelp-rgb"].cfg) == "RGB GeoTIFF"
     assert input_description(model_registry["kelp-rgbi"].cfg) == "RGB + near-infrared GeoTIFF"
-    assert input_description(model_registry["kelp-skema"].cfg) == "Sentinel-2 L2A .SAFE folder"
+    assert input_description(model_registry["kelp-skema"].cfg) == "Sentinel-2 L2A .SAFE.zip or .SAFE folder"
     assert default_band_order(model_registry["kelp-rgbi"].cfg) == "1, 2, 3, 4"
 
 
@@ -173,9 +183,33 @@ def test_accepted_inputs(tmp_path: Path) -> None:
     tiff = tmp_path / "b.TIFF"
     other = tmp_path / "c.jpg"
     safe = tmp_path / "S2B_X.SAFE"
+    safe_zip = _zip(_make_safe(tmp_path / "src"), tmp_path / "S2B_Y.SAFE.ZIP", "S2B_Y.SAFE/")
+    other_zip = tmp_path / "tiffs.zip"
+    damaged_zip = tmp_path / "S2B_Z.SAFE.zip"
     for path in (tif, tiff, other):
         path.touch()
     safe.mkdir()
+    with zipfile.ZipFile(other_zip, "w") as archive:
+        archive.writestr("survey/a.tif", "")
+    damaged_zip.write_bytes(safe_zip.read_bytes()[:100])
+    paths = [tif, other, safe, tiff, safe_zip, other_zip, damaged_zip]
 
-    assert accepted_inputs([tif, other, safe, tiff], safe=False) == [tif, tiff]
-    assert accepted_inputs([tif, other, safe, tiff], safe=True) == [safe]
+    assert accepted_inputs(paths, safe=False) == [tif, tiff]
+    assert accepted_inputs(paths, safe=True) == [safe, safe_zip]
+
+
+def test_safe_folder_and_its_zip_share_an_output_stem() -> None:
+    stems = {output_stem(Path(p)) for p in ("/a/S2B_X.SAFE", "/b/S2B_X.SAFE.zip", "/c/S2B_X.zip")}
+
+    assert stems == {"S2B_X"}
+    assert output_stem(Path("/a/survey.tif")) == "survey"
+
+
+def test_input_preview_of_safe_zip(tmp_path: Path) -> None:
+    safe = _make_safe(tmp_path)
+    zipped = _zip(safe, tmp_path / "S2B_MSIL2A_X.SAFE.zip", "S2B_MSIL2A_X.SAFE/")
+
+    preview = read_input_preview(zipped, max_size=10)
+
+    assert preview.shape == (10, 10, 3)
+    np.testing.assert_array_equal(preview, read_input_preview(safe, max_size=10))

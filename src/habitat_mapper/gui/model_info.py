@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from habitat_mapper.reader import SAFEReader
+from habitat_mapper.reader import SAFEReader, is_safe_zip
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -16,10 +16,10 @@ GEOTIFF_SUFFIXES = (".tif", ".tiff")
 
 
 def reads_safe(cfg: ModelConfig) -> bool:
-    """Check whether a model reads Sentinel-2 .SAFE folders rather than GeoTIFFs.
+    """Check whether a model reads Sentinel-2 .SAFE folders, or their .zip downloads, rather than GeoTIFFs.
 
     Returns:
-        True if the model's inputs are .SAFE folders.
+        True if the model's inputs are .SAFE folders or zips.
     """
     return cfg.reader_cls is SAFEReader
 
@@ -31,7 +31,7 @@ def input_description(cfg: ModelConfig) -> str:
         The description.
     """
     if reads_safe(cfg):
-        return "Sentinel-2 L2A .SAFE folder"
+        return "Sentinel-2 L2A .SAFE.zip or .SAFE folder"
     return {
         3: "RGB GeoTIFF",
         4: "RGB + near-infrared GeoTIFF",
@@ -53,11 +53,11 @@ def accepted_inputs(paths: Iterable[Path], safe: bool) -> list[Path]:
 
     Args:
         paths: Dropped paths.
-        safe: Whether the model reads Sentinel-2 .SAFE folders. Otherwise it reads GeoTIFFs.
+        safe: Whether the model reads Sentinel-2 .SAFE folders and zips. Otherwise it reads GeoTIFFs.
 
     Returns:
         The usable paths, in the order given.
     """
     if safe:
-        return [path for path in paths if path.is_dir() and path.suffix.upper() == ".SAFE"]
+        return [path for path in paths if (path.is_dir() and path.suffix.upper() == ".SAFE") or is_safe_zip(path)]
     return [path for path in paths if path.is_file() and path.suffix.lower() in GEOTIFF_SUFFIXES]

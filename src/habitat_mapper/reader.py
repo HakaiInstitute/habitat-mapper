@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import zipfile
 from abc import ABC, abstractmethod
+from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import IO, TYPE_CHECKING
 
 import numpy as np
 import rasterio
@@ -225,11 +227,145 @@ class TIFFReader(ImageReader):
             self._src.close()
 
 
+def _is_product_file(name: str) -> bool:
+    """Check whether a file belongs to a product, rather than being one macOS added.
+
+    macOS writes `._` stubs beside files on drives it doesn't format itself, and `__MACOSX` folders into zips it makes.
+    The stubs match the band patterns, so they would be read instead of the bands.
+
+    Returns:
+        True if the file is part of the product.
+    """
+    parts = name.split("/")
+    return not parts[-1].startswith("._") and "__MACOSX" not in parts
+
+
+def _product_roots(names: list[str]) -> list[str]:
+    """Find the folders, inside a zip, that hold a product's GRANULE folder.
+
+    Returns:
+        The folders, as paths inside the zip. An empty string is the zip's root.
+    """
+    return [
+        "/".join(parts[: parts.index("GRANULE")])
+        for parts in (name.split("/") for name in names if _is_product_file(name))
+        if "GRANULE" in parts[:-1]
+    ]
+
+
+def is_safe_zip(path: Path) -> bool:
+    """Check whether a path is a zip holding a Sentinel-2 .SAFE product, as they are downloaded.
+
+    Only the zip's list of files is read, so this is quick even for large products.
+
+    Returns:
+        True if the path is a readable .zip with a GRANULE folder in it.
+    """
+    if not (path.is_file() and path.suffix.lower() == ".zip"):
+        return False
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return bool(_product_roots(archive.namelist()))
+    except (zipfile.BadZipFile, OSError):
+        return False
+
+
+class SafeProduct:
+    """Files of a Sentinel-2 .SAFE product, in an extracted .SAFE folder or in the .zip it was downloaded as.
+
+    Files are named by their path inside the product, e.g. `GRANULE/L2A_.../IMG_DATA/R10m/T09UXQ_..._B02_10m.jp2`.
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        """List the files of a product.
+
+        Args:
+            path: A .SAFE folder, or a .zip containing one.
+
+        Raises:
+            ValueError: If the path isn't a .SAFE product.
+        """
+        self.path = Path(path)
+        self._zip = self.path.is_file()
+        if self._zip and self.path.suffix.lower() != ".zip":
+            raise ValueError(f"{self.path} isn't a Sentinel-2 .SAFE folder or a .zip of one.")
+        if self._zip:
+            try:
+                with zipfile.ZipFile(self.path) as archive:
+                    members = [name for name in archive.namelist() if not name.endswith("/")]
+            except zipfile.BadZipFile:
+                raise ValueError(
+                    f"{self.path} can't be read as a zip. It may be damaged or only partly downloaded. "
+                    "Try downloading it again."
+                ) from None
+            # Zips usually hold the .SAFE folder rather than its contents, so the product starts at the folder that
+            # holds GRANULE
+            roots = _product_roots(members)
+            if not roots:
+                raise ValueError(f"No GRANULE folder found in {self.path}. Is it a Sentinel-2 .SAFE zip?")
+            root = min(roots, key=len)
+            self._root = f"{root}/" if root else ""
+            self._files = [
+                m.removeprefix(self._root) for m in members if m.startswith(self._root) and _is_product_file(m)
+            ]
+        else:
+            if not (self.path / "GRANULE").is_dir():
+                raise ValueError(f"GRANULE directory does not exist in {self.path}. Please check your path.")
+            self._root = ""
+            self._files = [
+                name
+                for name in (p.relative_to(self.path).as_posix() for p in self.path.rglob("*") if p.is_file())
+                if _is_product_file(name)
+            ]
+
+    def __contains__(self, name: str) -> bool:
+        """Check whether the product has a file.
+
+        Returns:
+            True if the file exists.
+        """
+        return name in self._files
+
+    def find(self, pattern: str) -> str:
+        """Find the first file matching a pattern, where * also matches across folders.
+
+        Args:
+            pattern: e.g. `GRANULE/*/IMG_DATA/*_B02_10m.jp2`.
+
+        Returns:
+            A path rasterio can open, including for files inside a zip.
+
+        Raises:
+            FileNotFoundError: If no file matches.
+        """
+        name = next((name for name in sorted(self._files) if fnmatchcase(name, pattern)), None)
+        if name is None:
+            raise FileNotFoundError(f"No file matching {pattern} in {self.path}")
+        if self._zip:
+            # GDAL reads files inside the zip without extracting it. The braces mark where the zip's path ends
+            return f"/vsizip/{{{self.path.resolve().as_posix()}}}/{self._root}{name}"
+        return str(self.path / name)
+
+    def open(self, name: str) -> IO[bytes]:
+        """Open a file of the product for reading.
+
+        Returns:
+            The open file, to be closed by the caller.
+        """
+        if self._zip:
+            archive = zipfile.ZipFile(self.path)
+            # The member keeps the archive's file open until it is closed itself
+            member = archive.open(self._root + name)
+            archive.close()
+            return member
+        return (self.path / name).open("rb")
+
+
 class SAFEReader(ImageReader):
     """Reader for Sentinel-2 SAFE directory format.
 
-    Reads L2A Sentinel-2 data directly from SAFE directories without requiring
-    pre-conversion to TIFF. Handles band resampling, data offset, and band selection.
+    Reads L2A Sentinel-2 data directly from SAFE directories, or the .zip files they are downloaded as, without
+    requiring extraction or pre-conversion to TIFF. Handles band resampling, data offset, and band selection.
     """
 
     def __init__(
@@ -240,16 +376,13 @@ class SAFEReader(ImageReader):
         """Initialize SAFEReader.
 
         Args:
-            safe_dir_path: Path to the .SAFE directory containing Sentinel-2 L2A data.
+            safe_dir_path: Path to the .SAFE directory containing Sentinel-2 L2A data, or a .zip containing one.
             **kwargs: Additional keyword arguments (ignored for compatibility).
 
-        Raises:
-            ValueError: If SAFE directory structure is invalid.
+        Raises ValueError, from SafeProduct, if the path isn't a .SAFE product.
         """
         self.safe_dir_path = Path(safe_dir_path)
-
-        if not (self.safe_dir_path / "GRANULE").exists():
-            raise ValueError(f"GRANULE directory does not exist in {self.safe_dir_path}. Please check your path.")
+        self._product = SafeProduct(self.safe_dir_path)
 
         # Determine data offset from metadata
         self._offset = self._get_data_offset()
@@ -266,15 +399,15 @@ class SAFEReader(ImageReader):
         Returns:
             Data offset value (0 or 1000 depending on processing baseline)
         """
-        metadata_path = self.safe_dir_path / "MTD_MSIL2A.xml"
         offset = 1000
 
-        if not metadata_path.exists():
+        if "MTD_MSIL2A.xml" not in self._product:
             logger.warning("No MTD_MSIL2A.xml file found. Assuming data offset of 1000.")
             return offset
 
         try:
-            tree = parse_xml(metadata_path)
+            with self._product.open("MTD_MSIL2A.xml") as metadata:
+                tree = parse_xml(metadata)
             root = tree.getroot()
             pb = root.findtext(".//PROCESSING_BASELINE")
             if pb and float(pb) < 4:
@@ -292,11 +425,11 @@ class SAFEReader(ImageReader):
         """
         try:
             # Find band files (B02, B03, B04, B08 @ 10m, B05 @ 20m)
-            band_02 = next(self.safe_dir_path.glob("GRANULE/**/IMG_DATA/**/*_B02_10m.jp2"))
-            band_03 = next(self.safe_dir_path.glob("GRANULE/**/IMG_DATA/**/*_B03_10m.jp2"))
-            band_04 = next(self.safe_dir_path.glob("GRANULE/**/IMG_DATA/**/*_B04_10m.jp2"))
-            band_08 = next(self.safe_dir_path.glob("GRANULE/**/IMG_DATA/**/*_B08_10m.jp2"))
-            band_05 = next(self.safe_dir_path.glob("GRANULE/**/IMG_DATA/**/*_B05_20m.jp2"))
+            band_02 = self._product.find("GRANULE/*/IMG_DATA/*_B02_10m.jp2")
+            band_03 = self._product.find("GRANULE/*/IMG_DATA/*_B03_10m.jp2")
+            band_04 = self._product.find("GRANULE/*/IMG_DATA/*_B04_10m.jp2")
+            band_08 = self._product.find("GRANULE/*/IMG_DATA/*_B08_10m.jp2")
+            band_05 = self._product.find("GRANULE/*/IMG_DATA/*_B05_20m.jp2")
 
             band_data: list[np.ndarray] = []
             for band_file in (band_02, band_03, band_04, band_08):
@@ -327,7 +460,7 @@ class SAFEReader(ImageReader):
                 stacked = (stacked.astype(np.int32) - self._offset).clip(0).astype(np.uint16)
 
             self._stacked = stacked
-        except StopIteration as e:
+        except FileNotFoundError as e:
             raise ValueError(f"Could not find required Sentinel-2 bands in {self.safe_dir_path}") from e
 
     @property
