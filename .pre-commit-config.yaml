@@ -26,3 +26,8 @@ repos:
       - id: ruff-check
         args: [ --fix ]
       - id: ruff-format
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.13.10
+    hooks:
+      # Keeps uv.lock in step with pyproject.toml, e.g. after a version bump
+      - id: uv-lock
