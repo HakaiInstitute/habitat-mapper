@@ -70,6 +70,9 @@ examples = [
 freeze = [
     "pyinstaller>=6.22.3",
 ]
+gui-tests = [
+    "pytest-qt>=4.5.0",
+]
 
 [project.urls]
 Documentation = "https://habitat-mapper.readthedocs.io"
@@ -154,8 +157,9 @@ omit = [
 ]
 
 [tool.coverage.report]
-# A ratchet, not a target: raise this when coverage goes up so it can't quietly fall back
-fail_under = 49
+# A ratchet, not a target: raise this when coverage goes up so it can't quietly fall back. Measured with the gui extra
+# and gui-tests group installed, as CI's coverage job does
+fail_under = 76
 skip_covered = true
 show_missing = true
 exclude_also = [

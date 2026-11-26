@@ -80,16 +80,20 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: uv sync --dev
+        # With Qt, so the desktop app's window is tested and counted too
+        run: uv sync --dev --extra gui --group gui-tests
 
       - name: Run tests with coverage
-        run: uv run pytest --cov --cov-report=term --cov-report=xml
+        env:
+          QT_QPA_PLATFORM: offscreen
+          HAB_REQUIRE_QT_TESTS: "1"  # Fail rather than skip the window tests if Qt is missing
+        run: uv run --no-sync pytest --cov --cov-report=term --cov-report=xml
 
       - name: Check coverage of changed lines
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: uv run diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=80
+        run: uv run --no-sync diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=80
 
   Oldest-ONNX-Runtime:
     # pyproject.toml allows these minimum versions, so the code must keep working on them as newer ones come out
