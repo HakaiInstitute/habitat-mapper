@@ -71,8 +71,8 @@ results. To find a single result, double click its row, or right click it and ch
 While an image is processed, the preview shows its result filling in. The white box is the tile the model is
 looking at, outlined in gold and dashed where it extends past the edge of your image. Tiles overlap, and predictions where they overlap
 are blended so that tile edges don't show, so most of a tile isn't finished until the tiles to its right and below
-are done. Those parts are covered in a light haze until then. The finished result replaces the preview at the end,
-with the median blur and morphological filter applied, if you turned them on.
+are done. Those parts are covered in a light haze until then. If you turned on the median blur or morphological
+filter, they run once the model is done, and the preview fills in again with the filtered result.
 
 Select an image in the list to preview it, with its result on top once it's done. Scroll to zoom, drag to pan, and
 double click or click **Fit** to fit the image again. The **Result opacity** slider fades the result in and out, and

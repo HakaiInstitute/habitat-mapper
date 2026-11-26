@@ -120,3 +120,22 @@ def test_band_order_can_pick_from_more_bands_than_the_model_takes() -> None:
     model.input_size = None
     processor = ImageProcessor.from_model(model, SegmentOptions(crop_size=CROP_SIZE, band_order=[6, 4, 2]))
     assert processor.config.band_order == [6, 4, 2]
+
+
+def test_observer_sees_the_filtered_result(tmp_path: Path) -> None:
+    rng = np.random.default_rng(0)
+    model = _make_stub_model([])
+    # Noisy predictions, so that the filters change the result
+    model.predict.side_effect = lambda batch, _: rng.random((batch.shape[0], 2, *batch.shape[2:]), dtype=np.float32)
+    processor = ImageProcessor(
+        model=model,
+        config=ProcessingConfig(crop_size=CROP_SIZE, blur_kernel_size=5, morph_kernel_size=3, band_order=[1, 2, 3]),
+        progress=NullProgressReporter,
+    )
+    observer = _RecordingObserver()
+    out_path = tmp_path / "output.tif"
+
+    processor.run(_random_image(tmp_path / "input.tif", np.uint8), out_path, observer=observer)
+
+    with rasterio.open(out_path) as src:
+        np.testing.assert_array_equal(observer.result, src.read(1))
