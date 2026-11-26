@@ -10,7 +10,7 @@ import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 
-from habitat_mapper.reader import SafeProduct, is_safe_zip
+from habitat_mapper.reader import SafeProduct
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -110,7 +110,7 @@ def read_input_preview(path: Path, max_size: int = PREVIEW_SIZE, band_order: lis
         A (height, width, 3) uint8 array.
     """
     source: Path | str = path
-    if path.is_dir() or is_safe_zip(path):
+    if path.is_dir() or path.suffix.lower() == ".zip":
         source, band_order = _true_colour_image(path), [1, 2, 3]
 
     with rasterio.open(source) as src:

@@ -31,7 +31,7 @@ def input_description(cfg: ModelConfig) -> str:
         The description.
     """
     if reads_safe(cfg):
-        return "Sentinel-2 L2A .SAFE folder or .zip"
+        return "Sentinel-2 L2A .SAFE.zip or .SAFE folder"
     return {
         3: "RGB GeoTIFF",
         4: "RGB + near-infrared GeoTIFF",

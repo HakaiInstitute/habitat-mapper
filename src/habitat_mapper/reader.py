@@ -227,13 +227,47 @@ class TIFFReader(ImageReader):
             self._src.close()
 
 
-def is_safe_zip(path: Path) -> bool:
-    """Check whether a path is a zip file, as Sentinel-2 .SAFE products are downloaded.
+def _is_product_file(name: str) -> bool:
+    """Check whether a file belongs to a product, rather than being one macOS added.
+
+    macOS writes `._` stubs beside files on drives it doesn't format itself, and `__MACOSX` folders into zips it makes.
+    The stubs match the band patterns, so they would be read instead of the bands.
 
     Returns:
-        True if the path is a file with a .zip extension.
+        True if the file is part of the product.
     """
-    return path.is_file() and path.suffix.lower() == ".zip"
+    parts = name.split("/")
+    return not parts[-1].startswith("._") and "__MACOSX" not in parts
+
+
+def _product_roots(names: list[str]) -> list[str]:
+    """Find the folders, inside a zip, that hold a product's GRANULE folder.
+
+    Returns:
+        The folders, as paths inside the zip. An empty string is the zip's root.
+    """
+    return [
+        "/".join(parts[: parts.index("GRANULE")])
+        for parts in (name.split("/") for name in names if _is_product_file(name))
+        if "GRANULE" in parts[:-1]
+    ]
+
+
+def is_safe_zip(path: Path) -> bool:
+    """Check whether a path is a zip holding a Sentinel-2 .SAFE product, as they are downloaded.
+
+    Only the zip's list of files is read, so this is quick even for large products.
+
+    Returns:
+        True if the path is a readable .zip with a GRANULE folder in it.
+    """
+    if not (path.is_file() and path.suffix.lower() == ".zip"):
+        return False
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return bool(_product_roots(archive.namelist()))
+    except (zipfile.BadZipFile, OSError):
+        return False
 
 
 class SafeProduct:
@@ -252,27 +286,35 @@ class SafeProduct:
             ValueError: If the path isn't a .SAFE product.
         """
         self.path = Path(path)
-        self._zip = is_safe_zip(self.path)
+        self._zip = self.path.is_file()
         if self._zip:
-            with zipfile.ZipFile(self.path) as archive:
-                members = [name for name in archive.namelist() if not name.endswith("/")]
+            try:
+                with zipfile.ZipFile(self.path) as archive:
+                    members = [name for name in archive.namelist() if not name.endswith("/")]
+            except zipfile.BadZipFile:
+                raise ValueError(
+                    f"{self.path} can't be read as a zip. It may be damaged or only partly downloaded. "
+                    "Try downloading it again."
+                ) from None
             # Zips usually hold the .SAFE folder rather than its contents, so the product starts at the folder that
             # holds GRANULE
-            roots = [
-                "/".join(parts[: parts.index("GRANULE")])
-                for parts in (m.split("/") for m in members)
-                if "GRANULE" in parts[:-1]
-            ]
+            roots = _product_roots(members)
             if not roots:
                 raise ValueError(f"No GRANULE folder found in {self.path}. Is it a Sentinel-2 .SAFE zip?")
             root = min(roots, key=len)
             self._root = f"{root}/" if root else ""
-            self._files = [m.removeprefix(self._root) for m in members if m.startswith(self._root)]
+            self._files = [
+                m.removeprefix(self._root) for m in members if m.startswith(self._root) and _is_product_file(m)
+            ]
         else:
             if not (self.path / "GRANULE").is_dir():
                 raise ValueError(f"GRANULE directory does not exist in {self.path}. Please check your path.")
             self._root = ""
-            self._files = [p.relative_to(self.path).as_posix() for p in self.path.rglob("*") if p.is_file()]
+            self._files = [
+                name
+                for name in (p.relative_to(self.path).as_posix() for p in self.path.rglob("*") if p.is_file())
+                if _is_product_file(name)
+            ]
 
     def __contains__(self, name: str) -> bool:
         """Check whether the product has a file.

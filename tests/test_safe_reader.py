@@ -12,7 +12,7 @@ import rasterio
 from rasterio.transform import from_origin
 from rasterio.windows import Window
 
-from habitat_mapper.reader import SafeProduct, SAFEReader
+from habitat_mapper.reader import SafeProduct, SAFEReader, is_safe_zip
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -115,6 +115,43 @@ def test_zip_without_granule_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="GRANULE"):
         SafeProduct(zipped)
+
+
+def test_damaged_zip_is_reported_as_value_error(tmp_path: Path) -> None:
+    zipped = _zip(_make_safe(tmp_path), tmp_path / "S2B_MSIL2A_X.SAFE.zip", "S2B_MSIL2A_X.SAFE/")
+    zipped.write_bytes(zipped.read_bytes()[:100])
+
+    with pytest.raises(ValueError, match="partly downloaded"):
+        SafeProduct(zipped)
+
+
+def test_macos_stub_files_are_ignored(tmp_path: Path) -> None:
+    safe = _make_safe(tmp_path)
+    band = next(safe.rglob("*_B02_10m.jp2"))
+    # The stubs macOS writes on non-Mac drives sort before the real files and match the band patterns
+    (band.parent / f"._{band.name}").write_bytes(b"\x00" * 16)
+    zipped = _zip(safe, tmp_path / "S2B_MSIL2A_X.SAFE.zip", "S2B_MSIL2A_X.SAFE/")
+    with zipfile.ZipFile(zipped, "a") as archive:
+        archive.writestr(f"__MACOSX/S2B_MSIL2A_X.SAFE/{GRANULE}/R10m/._{band.name}", b"\x00" * 16)
+
+    for path in (safe, zipped):
+        assert SafeProduct(path).find("GRANULE/*/IMG_DATA/*_B02_10m.jp2").endswith(f"/{band.name}")
+        assert SAFEReader(path).num_bands == 5
+
+
+def test_is_safe_zip(tmp_path: Path) -> None:
+    safe = _make_safe(tmp_path)
+    zipped = _zip(safe, tmp_path / "S2B_MSIL2A_X.zip", "S2B_MSIL2A_X.SAFE/")
+    other = tmp_path / "tiffs.zip"
+    with zipfile.ZipFile(other, "w") as archive:
+        archive.writestr("survey/a.tif", "")
+    damaged = tmp_path / "damaged.zip"
+    damaged.write_bytes(zipped.read_bytes()[:100])
+
+    assert is_safe_zip(zipped)
+    assert not is_safe_zip(other)
+    assert not is_safe_zip(damaged)
+    assert not is_safe_zip(safe)
 
 
 def test_folder_without_granule_is_rejected(tmp_path: Path) -> None:
