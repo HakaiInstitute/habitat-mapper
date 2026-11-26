@@ -30,7 +30,7 @@ from habitat_mapper.gui.preview import (
     read_input_preview,
     read_output_preview,
 )
-from habitat_mapper.gui.updates import newer_release
+from habitat_mapper.gui.updates import Release, newer_release
 from habitat_mapper.registry import model_registry
 from tests.test_blank_tile_skipping import _write_raster
 from tests.test_safe_reader import _make_safe, _zip
@@ -86,19 +86,40 @@ def test_output_preview_hides_background_and_nodata(tmp_path: Path) -> None:
     assert list(overlay[0, :, 3]) == [0, 255, 255, 0]
 
 
-def _release_response(tag: str) -> MagicMock:
+_ASSETS = [
+    {"name": "Habitat-Mapper-0.18.0-macos-arm64.dmg", "browser_download_url": "https://example.com/mac.dmg"},
+    {"name": "Habitat-Mapper-0.18.0-windows-x64-setup.exe", "browser_download_url": "https://example.com/win.exe"},
+]
+
+
+def _release_response(tag: str, assets: list[dict[str, str]] | None = None) -> MagicMock:
     response = MagicMock()
-    response.json.return_value = {"tag_name": tag, "html_url": f"https://example.com/{tag}"}
+    response.json.return_value = {"tag_name": tag, "html_url": f"https://example.com/{tag}", "assets": assets or []}
     return response
 
 
-@pytest.mark.parametrize(
-    ("tag", "expected"),
-    [("v0.18.0", ("0.18.0", "https://example.com/v0.18.0")), ("v0.17.0", None), ("v0.16.2", None)],
-)
-def test_newer_release(tag: str, expected: tuple[str, str] | None) -> None:
+@pytest.mark.parametrize("tag", ["v0.17.0", "v0.16.2"])
+def test_no_newer_release(tag: str) -> None:
     with patch("habitat_mapper.gui.updates.requests.get", return_value=_release_response(tag)):
-        assert newer_release("0.17.0") == expected
+        assert newer_release("0.17.0") is None
+
+
+@pytest.mark.parametrize(
+    ("system", "installer_url"),
+    [("Windows", "https://example.com/win.exe"), ("Darwin", "https://example.com/mac.dmg"), ("Linux", None)],
+)
+def test_newer_release_finds_the_installer_for_the_platform(system: str, installer_url: str | None) -> None:
+    with patch("habitat_mapper.gui.updates.requests.get", return_value=_release_response("v0.18.0", _ASSETS)):
+        release = newer_release("0.17.0", system=system)
+    assert release == Release("0.18.0", "https://example.com/v0.18.0", installer_url)
+    assert release.download_url == (installer_url or "https://example.com/v0.18.0")
+
+
+def test_newer_release_without_installers_downloads_from_the_release_page() -> None:
+    with patch("habitat_mapper.gui.updates.requests.get", return_value=_release_response("v0.18.0")):
+        release = newer_release("0.18.0b1", system="Windows")
+    assert release is not None
+    assert release.download_url == "https://example.com/v0.18.0"
 
 
 def test_newer_release_ignores_network_errors() -> None:

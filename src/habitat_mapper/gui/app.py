@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 from pydantic import ValidationError
-from PySide6.QtCore import QObject, QPoint, QProcess, QRectF, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QObject, QPoint, QProcess, QRectF, QSettings, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -76,7 +76,7 @@ from habitat_mapper.gui.preview import (
     read_output_preview,
 )
 from habitat_mapper.gui.tray import TrayIcon
-from habitat_mapper.gui.updates import newer_release
+from habitat_mapper.gui.updates import Release, newer_release
 from habitat_mapper.gui.worker import SegmentWorker, run_in_background
 from habitat_mapper.registry import model_registry
 
@@ -92,6 +92,8 @@ if TYPE_CHECKING:
 
 # How often the preview of the image being processed is redrawn
 _LIVE_REFRESH_MS = 200
+# QSettings key for the release someone chose not to hear about again
+_SKIPPED_VERSION_KEY = "updates/skipped_version"
 DOCS_URL = "https://habitat-mapper.readthedocs.io"
 _IMAGE_FILTER = "GeoTIFF images (*.tif *.tiff);;All files (*)"
 _SAFE_ZIP_FILTER = "Sentinel-2 SAFE zips (*.zip);;All files (*)"
@@ -308,9 +310,15 @@ class MainWindow(QMainWindow):
         self._update_bar = QFrame()
         self._update_bar.setObjectName("infoBar")
         self._update_label = QLabel()
+        # Lets people copy the pip command shown when the app wasn't installed with an installer
+        self._update_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._update_url = ""
-        download = QPushButton("Download")
-        download.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self._update_url)))
+        self._update_version = ""
+        self._update_open = QPushButton()
+        self._update_open.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self._update_url)))
+        skip = QPushButton("Skip this version")
+        skip.setToolTip("Don't mention this version again")
+        skip.clicked.connect(self._skip_update)
         dismiss = QToolButton()
         dismiss.setText("✕")
         dismiss.setToolTip("Hide until next time")
@@ -319,7 +327,8 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(self._update_bar)
         layout.setContentsMargins(12, 6, 6, 6)
         layout.addWidget(self._update_label, 1)
-        layout.addWidget(download)
+        layout.addWidget(self._update_open)
+        layout.addWidget(skip)
         layout.addWidget(dismiss)
         self._update_bar.hide()
         return self._update_bar
@@ -637,11 +646,24 @@ class MainWindow(QMainWindow):
             self._device_label.setToolTip("")
 
     def _show_update(self, release: object) -> None:
-        if isinstance(release, tuple):
-            version, url = release
-            self._update_url = url
-            self._update_label.setText(f"Habitat-Mapper {version} is available. You have {__version__}.")
-            self._update_bar.show()
+        if not isinstance(release, Release) or QSettings().value(_SKIPPED_VERSION_KEY) == release.version:
+            return
+        self._update_version = release.version
+        message = f"Habitat-Mapper {release.version} is available. You have {__version__}."
+        if getattr(sys, "frozen", False):
+            self._update_url = release.download_url
+            self._update_open.setText("Download")
+        else:
+            # Installed with pip or uv, so the installers on the release page aren't the way to update
+            message += ' Update with: pip install -U "habitat-mapper[gui]"'
+            self._update_url = release.page_url
+            self._update_open.setText("What's new")
+        self._update_label.setText(message)
+        self._update_bar.show()
+
+    def _skip_update(self) -> None:
+        QSettings().setValue(_SKIPPED_VERSION_KEY, self._update_version)
+        self._update_bar.hide()
 
     def _copy_diagnostics(self) -> None:
         QGuiApplication.clipboard().setText(diagnostics_report(self._active_device))
