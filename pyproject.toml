@@ -159,7 +159,7 @@ omit = [
 [tool.coverage.report]
 # A ratchet, not a target: raise this when coverage goes up so it can't quietly fall back. Measured with the gui extra
 # and gui-tests group installed, as CI's coverage job does
-fail_under = 76
+fail_under = 80
 skip_covered = true
 show_missing = true
 exclude_also = [

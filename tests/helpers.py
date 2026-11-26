@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 import numpy as np
 import onnx
 import rasterio
+import requests
 from onnx import TensorProto, helper, numpy_helper
 from rasterio.transform import from_origin
 
@@ -47,6 +48,28 @@ def write_raster(path: Path, data: np.ndarray, pixel_size: float = 1) -> Path:
     ) as dst:
         dst.write(data)
     return path
+
+
+class FakeResponse:
+    """Stands in for the response of requests.get(..., stream=True)."""
+
+    def __init__(self, body: bytes, length: int | None = None, status: int = 200) -> None:
+        self.body = body
+        self.headers = {"content-length": str(len(body) if length is None else length)}
+        self.status = status
+
+    def __enter__(self) -> FakeResponse:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        pass
+
+    def raise_for_status(self) -> None:
+        if self.status >= 400:
+            raise requests.HTTPError(f"{self.status} error")
+
+    def iter_content(self, chunk_size: int) -> list[bytes]:
+        return [self.body[i : i + chunk_size] for i in range(0, len(self.body), chunk_size)]
 
 
 def make_stub_model(
