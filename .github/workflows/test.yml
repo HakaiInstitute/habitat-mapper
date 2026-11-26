@@ -79,6 +79,9 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Install Qt's system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon0 libfontconfig1
+
       - name: Install dependencies
         # With Qt, so the desktop app's window is tested and counted too
         run: uv sync --dev --extra gui --group gui-tests
