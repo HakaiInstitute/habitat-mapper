@@ -335,34 +335,12 @@ class ImageProcessor:
         Returns:
             Numpy array of shape [batch_size, channels, height, width] containing the tile data.
         """
-        tile_data = []
-        for window in windows:
-            # Use boundless reading to handle out-of-bounds areas with fill_value=0
-            tile_img = reader.read_window(
-                window=window,
-                band_order=self.config.band_order,
-                boundless=True,
-                fill_value=0,
-            )
-            _, th, tw = tile_img.shape
-
-            # Pad out to tile size if needed (shouldn't be necessary with boundless reading)
-            if th < self.config.crop_size or tw < self.config.crop_size:
-                tile_img = np.pad(
-                    tile_img,
-                    (
-                        (0, 0),
-                        (0, self.config.crop_size - th),
-                        (0, self.config.crop_size - tw),
-                    ),
-                    mode="constant",
-                    constant_values=0,
-                )
-
-            tile_data.append(tile_img)
-
-        # Stack into batch array [b, c, h, w]
-        return np.stack(tile_data, axis=0)
+        # Readers fill the parts of a tile past the image's edges with 0, so every tile is full size
+        tiles = [
+            reader.read_window(window=window, band_order=self.config.band_order, boundless=True, fill_value=0)
+            for window in windows
+        ]
+        return np.stack(tiles, axis=0)
 
     def _filter_overlap(self) -> int:
         """How far a filtered pixel can depend on its neighbours, so how much filter tiles must overlap.
