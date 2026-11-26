@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import os
-import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
-from pydantic import ValidationError
 from PySide6.QtCore import QObject, QPoint, QProcess, QRectF, QSettings, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
@@ -55,16 +53,16 @@ from PySide6.QtWidgets import (
 from habitat_mapper import __version__
 from habitat_mapper.accelerators import select_accelerators
 from habitat_mapper.cache import model_cache
-from habitat_mapper.config import SegmentOptions
 from habitat_mapper.gui import theme
-from habitat_mapper.gui.batch import BatchItem, Status, existing_outputs, output_path_for, output_stem
+from habitat_mapper.gui.batch import BatchQueue, Status, existing_outputs, preview_caption, preview_model
 from habitat_mapper.gui.canvas import PreviewCanvas
 from habitat_mapper.gui.diagnostics import LOG_DIR, add_log_file, diagnostics_report
 from habitat_mapper.gui.model_info import (
     accepted_inputs,
     default_band_order,
-    describe_option_errors,
     input_description,
+    parse_band_order,
+    parse_options,
     reads_safe,
 )
 from habitat_mapper.gui.models_dialog import ModelsDialog
@@ -87,7 +85,7 @@ if TYPE_CHECKING:
     from PySide6.QtCore import QModelIndex, QPersistentModelIndex
     from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragLeaveEvent, QDropEvent
 
-    from habitat_mapper.config import ModelConfig, OutputClass
+    from habitat_mapper.config import ModelConfig, OutputClass, SegmentOptions
     from habitat_mapper.model import ONNXModel
 
 # How often the preview of the image being processed is redrawn
@@ -215,7 +213,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 600)
         self.setAcceptDrops(True)
 
-        self._items: list[BatchItem] = []
+        self._batch = BatchQueue()
         self._thread: QThread | None = None
         self._worker: SegmentWorker | None = None
         # The model of the last run, kept so its session stays loaded for the next run with the same model
@@ -714,21 +712,9 @@ class MainWindow(QMainWindow):
             paths: Images to queue.
             note: Status message about paths the caller didn't pass on, shown alongside any about these.
         """
-        queued = {item.input_path for item in self._items}
-        # A .SAFE folder and its .zip give results with the same name, so only one of them is queued
-        stems = {output_stem(item.input_path) for item in self._items}
-        clashes = 0
-        added: list[Path] = []
-        for path in paths:
-            if path in queued:
-                continue
-            if output_stem(path) in stems:
-                clashes += 1
-                continue
-            queued.add(path)
-            stems.add(output_stem(path))
-            added.append(path)
-            self._items.append(BatchItem(path))
+        result = self._batch.add(paths)
+        added = result.added
+        for path in added:
             row = self._queue.rowCount()
             self._queue.insertRow(row)
             name = QTableWidgetItem(path.name)
@@ -741,23 +727,17 @@ class MainWindow(QMainWindow):
         if added and not self._queue.selectedItems():
             self._queue.selectRow(self._queue.rowCount() - 1)
         self._update_queue_state()
-        messages = [note] if note else []
-        if clashes:
-            messages.append(
-                f"{clashes} item{'s' if clashes != 1 else ''} not added. An image with the same name is already "
-                "queued, and their results would overwrite each other."
-            )
-        if messages:
-            self.statusBar().showMessage(" ".join(messages), 8000)
+        if message := " ".join(m for m in (note, result.message) if m):
+            self.statusBar().showMessage(message, 8000)
 
     def _remove_rows(self, rows: set[int]) -> None:
         if self._thread is not None:
             return
         for row in sorted(rows, reverse=True):
             self._queue.removeRow(row)
-            del self._items[row]
+        self._batch.remove(rows)
         self._preview_row = None
-        if not self._items:
+        if not self._batch.items:
             self._canvas.set_images(None)
         self._update_queue_state()
 
@@ -765,11 +745,11 @@ class MainWindow(QMainWindow):
         self._remove_rows({index.row() for index in self._queue.selectedIndexes()})
 
     def _clear_queue(self) -> None:
-        self._remove_rows(set(range(len(self._items))))
+        self._remove_rows(set(range(len(self._batch.items))))
 
     def _update_queue_state(self) -> None:
         """Update the parts of the window that depend on how many images are queued."""
-        count = len(self._items)
+        count = len(self._batch.items)
         self._queue_count.setText(f"{count} image{'s' if count != 1 else ''}" if count else "")
         running = self._thread is not None
         self._remove_button.setEnabled(bool(count) and not running)
@@ -792,7 +772,7 @@ class MainWindow(QMainWindow):
             )
 
     def _set_status(self, row: int, status: Status, error: str = "") -> None:
-        item = self._items[row]
+        item = self._batch.items[row]
         item.status = status
         item.error = error or None
         colours = {
@@ -815,7 +795,7 @@ class MainWindow(QMainWindow):
         row = self._queue.rowAt(position.y())
         if row < 0:
             return
-        item = self._items[row]
+        item = self._batch.items[row]
         menu = QMenu(self)
         has_result = item.status is Status.DONE and item.output_path is not None and item.output_path.exists()
         open_result = menu.addAction("Open result")
@@ -848,7 +828,7 @@ class MainWindow(QMainWindow):
 
     def _open_row(self, row: int, _column: int) -> None:
         """Show the result of a finished image in its folder."""
-        item = self._items[row]
+        item = self._batch.items[row]
         if item.status is Status.DONE and item.output_path is not None and item.output_path.exists():
             _reveal(item.output_path)
 
@@ -917,10 +897,10 @@ class MainWindow(QMainWindow):
         self._band_order.setPlaceholderText(f"Model default: {default_band_order(cfg)}")
         self._show_model_info()
         self._update_queue_state()
-        # A shown result keeps the legend of the model that made it; otherwise follow the chosen model
-        previewed = self._items[self._preview_row] if self._preview_row is not None else None
-        if not self._canvas.has_image() or previewed is None or previewed.model_name is None:
-            self._show_legend(cfg.classes)
+        previewed = None
+        if self._preview_row is not None and self._canvas.has_image():
+            previewed = self._batch.items[self._preview_row]
+        self._show_legend(preview_model(previewed, cfg).classes)
 
     def _show_model_info(self) -> None:
         cfg = self._current_cfg()
@@ -946,47 +926,22 @@ class MainWindow(QMainWindow):
             self._legend_layout.addSpacing(8)
 
     def _options(self) -> SegmentOptions:
-        """Read the advanced options.
+        """Read the advanced options. See `parse_options`, which raises a ValueError for the user if one is invalid.
 
         Returns:
             The options.
-
-        Raises:
-            ValueError: If an option is invalid, with a message for the user.
         """
-        try:
-            return SegmentOptions(
-                crop_size=self._crop_size.value() or None,
-                # Batches larger than 1 were never faster in testing
-                batch_size=1,
-                blur_kernel_size=self._blur.value(),
-                morph_kernel_size=self._morph.value(),
-                band_order=self._parse_band_order(),
-            )
-        except ValidationError as e:
-            raise ValueError(describe_option_errors(e)) from None
-
-    def _parse_band_order(self) -> list[int] | None:
-        """Read the band order option.
-
-        Returns:
-            Band numbers, starting at 1, or None to use the model default.
-
-        Raises:
-            ValueError: If the band order is invalid, with a message for the user.
-        """
-        text = self._band_order.text().strip()
-        if not text:
-            return None
-        try:
-            return [int(band) for band in re.split(r"[\s,]+", text)]
-        except ValueError:
-            raise ValueError("Band order must be band numbers separated by commas, e.g. 3, 2, 1.") from None
+        return parse_options(
+            crop_size=self._crop_size.value(),
+            blur=self._blur.value(),
+            morph=self._morph.value(),
+            band_order=self._band_order.text(),
+        )
 
     # Running
 
     def _run(self) -> None:
-        if not self._items:
+        if not self._batch.items:
             QMessageBox.information(self, "Nothing to run", "Add some images to the queue first.")
             return
         output_dir = Path(self._output_dir.text()).expanduser()
@@ -1007,16 +962,12 @@ class MainWindow(QMainWindow):
             model = self._loaded_model = model_registry[name, revision]
 
         # Images already done with this model and output folder aren't run again
-        def is_done(item: BatchItem) -> bool:
-            output_path = output_path_for(item.input_path, output_dir, name, revision)
-            return item.status is Status.DONE and item.output_path == output_path
-
-        pending = [item for item in self._items if not is_done(item)]
+        pending = self._batch.pending(output_dir, name, revision)
         if not pending:
             QMessageBox.information(self, "Nothing to run", "Every image has already been run with this model.")
             return
 
-        skip: set[Path] = set()
+        skip_existing = False
         if existing := existing_outputs(pending, output_dir, name, revision):
             answer = QMessageBox.question(
                 self,
@@ -1027,20 +978,11 @@ class MainWindow(QMainWindow):
             )
             if answer == QMessageBox.StandardButton.Cancel:
                 return
-            if answer == QMessageBox.StandardButton.No:
-                skip = set(existing)
+            skip_existing = answer == QMessageBox.StandardButton.No
 
-        jobs = []
-        for row, item in enumerate(self._items):
-            if is_done(item):
-                continue
-            item.output_path = output_path_for(item.input_path, output_dir, name, revision)
-            item.model_name, item.model_revision = name, revision
-            if item.output_path in skip:
-                self._set_status(row, Status.SKIPPED)
-            else:
-                self._set_status(row, Status.QUEUED)
-                jobs.append((row, item.input_path, item.output_path))
+        jobs = self._batch.start_run(output_dir, name, revision, skip_existing=skip_existing)
+        for row, item in enumerate(self._batch.items):
+            self._set_status(row, item.status, item.error or "")
         if not jobs:
             return
 
@@ -1108,7 +1050,7 @@ class MainWindow(QMainWindow):
         if self._queue.currentRow() != row:
             self._queue.selectRow(row)
         elif self._preview_row == row:
-            self._preview_label.setText(f"{self._items[row].input_path.name}, processing")
+            self._preview_label.setText(preview_caption(self._batch.items[row], has_result=False, processing=True))
             if self._loaded_model is not None:
                 self._show_legend(self._loaded_model.cfg.classes)
 
@@ -1144,14 +1086,13 @@ class MainWindow(QMainWindow):
         self._progress.setValue(1)
         self._show_model_info()
 
-        counts = {status: sum(item.status is status for item in self._items) for status in Status}
-        summary = ", ".join(f"{count} {status.value.lower()}" for status, count in counts.items() if count)
+        summary = self._batch.summary()
         self._stage.setText(f"Finished: {summary}")
         self._tray.set_status(f"Finished: {summary}", running=False)
-        self._open_output_button.setVisible(bool(counts[Status.DONE]))
+        self._open_output_button.setVisible(bool(self._batch.count(Status.DONE)))
         QApplication.alert(self)
 
-        failed = counts[Status.FAILED]
+        failed = self._batch.count(Status.FAILED)
         if failed:
             self._tray.notify("Some images failed", f"{failed} image(s) failed. {summary}.", failed=True)
             self._log_toggle.setChecked(True)
@@ -1174,18 +1115,14 @@ class MainWindow(QMainWindow):
 
     def _show_selected_preview(self) -> None:
         row = self._queue.currentRow()
-        if row < 0 or row >= len(self._items):
+        if row < 0 or row >= len(self._batch.items):
             return
-        item = self._items[row]
+        item = self._batch.items[row]
         output = item.output_path if item.status is Status.DONE else None
-        model_cfg = (
-            model_registry.config(item.model_name, item.model_revision or "latest")
-            if item.model_name
-            else self._current_cfg()
-        )
+        model_cfg = preview_model(item, self._current_cfg())
         palette = class_palette(model_cfg.classes) if model_cfg.classes else DEFAULT_PALETTE
         try:
-            band_order = self._parse_band_order()
+            band_order = parse_band_order(self._band_order.text())
         except ValueError:
             band_order = None
 
@@ -1205,18 +1142,12 @@ class MainWindow(QMainWindow):
             self._canvas.set_images(image, overlay)
             self._preview_row = row
             self._show_legend(model_cfg.classes)
-            name = item.input_path.name
-            if row == self._live_row:
-                self._preview_label.setText(f"{name}, processing")
+            processing = row == self._live_row
+            self._preview_label.setText(preview_caption(item, has_result=overlay is not None, processing=processing))
+            if processing:
                 self._refresh_live_preview()
-                return
-            self._live_key.hide()
-            if item.status is Status.FAILED:
-                self._preview_label.setText(f"{name} failed: {item.error}")
-            elif overlay is not None:
-                self._preview_label.setText(f"{name}, result from {item.model_name} {item.model_revision}")
             else:
-                self._preview_label.setText(f"{name}, {item.status.value.lower()}")
+                self._live_key.hide()
 
         def failed(error: str) -> None:
             if request == self._preview_request:

@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
+from habitat_mapper.config import SegmentOptions
 from habitat_mapper.reader import SAFEReader, is_safe_zip
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
-
-    from pydantic import ValidationError
 
     from habitat_mapper.config import ModelConfig
 
@@ -86,3 +88,49 @@ def describe_option_errors(error: ValidationError) -> str:
         label = _OPTION_LABELS.get(field, field or "Options")
         lines.append(f"{label}: {problem['msg'].removeprefix('Value error, ')}")
     return "\n".join(lines)
+
+
+def parse_band_order(text: str) -> list[int] | None:
+    """Read a band order as typed, e.g. "3, 2, 1" or "3 2 1".
+
+    Returns:
+        Band numbers, starting at 1, or None if nothing was typed, to use the model default.
+
+    Raises:
+        ValueError: If the text isn't band numbers, with a message for the user.
+    """
+    text = text.strip()
+    if not text:
+        return None
+    try:
+        return [int(band) for band in re.split(r"[\s,]+", text)]
+    except ValueError:
+        raise ValueError("Band order must be band numbers separated by commas, e.g. 3, 2, 1.") from None
+
+
+def parse_options(*, crop_size: int, blur: int, morph: int, band_order: str) -> SegmentOptions:
+    """Read the advanced options as the window shows them.
+
+    Args:
+        crop_size: Tile size, or 0 for the model's.
+        blur: Median blur kernel size, or 0 for none.
+        morph: Morphological filter kernel size, or 0 for none.
+        band_order: Band order as typed. See `parse_band_order`.
+
+    Returns:
+        The options.
+
+    Raises:
+        ValueError: If an option is invalid, with a message for the user naming each problem.
+    """
+    try:
+        return SegmentOptions(
+            crop_size=crop_size or None,
+            # Batches larger than 1 were never faster in testing
+            batch_size=1,
+            blur_kernel_size=blur,
+            morph_kernel_size=morph,
+            band_order=parse_band_order(band_order),
+        )
+    except ValidationError as e:
+        raise ValueError(describe_option_errors(e)) from None

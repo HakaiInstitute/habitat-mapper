@@ -155,7 +155,7 @@ omit = [
 
 [tool.coverage.report]
 # A ratchet, not a target: raise this when coverage goes up so it can't quietly fall back
-fail_under = 44
+fail_under = 49
 skip_covered = true
 show_missing = true
 exclude_also = [

@@ -8,88 +8,14 @@ from typing import TYPE_CHECKING
 from loguru import logger
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, SignalInstance, Slot
 
-from habitat_mapper.gui.batch import Status
-from habitat_mapper.gui.preview import LiveOverlay, class_palette
-from habitat_mapper.processing import ProcessingCancelled
+from habitat_mapper.gui.jobs import RunEvents, run_jobs
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
-    from pathlib import Path
-    from types import TracebackType
-    from typing import Self
-
-    import numpy as np
-    from rasterio.windows import Window
+    from collections.abc import Callable
 
     from habitat_mapper.config import SegmentOptions
+    from habitat_mapper.gui.batch import Job
     from habitat_mapper.model import ONNXModel
-
-
-class _QtTask:
-    def __init__(self, signal: SignalInstance, total: int | None) -> None:
-        self._signal = signal
-        self._total = total or 0
-        self._done = 0
-
-    def update(self, advance: int = 1) -> None:
-        self._done += advance
-        self._signal.emit(self._done, self._total)
-
-
-class _QtProgressReporter:
-    """ProgressReporter that emits (done, total) through a Qt signal."""
-
-    def __init__(self, signal: SignalInstance, step: Callable[[str], None] | None = None) -> None:
-        """Create the reporter.
-
-        Args:
-            signal: Emitted with (done, total) as each task advances.
-            step: Called with the description of each task as it starts, e.g. "Filtering".
-        """
-        self._signal = signal
-        self._step = step
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-    ) -> None:
-        pass
-
-    def add_task(self, description: str, total: int | None = None) -> _QtTask:
-        if self._step is not None:
-            self._step(description)
-        self._signal.emit(0, total or 0)
-        return _QtTask(self._signal, total)
-
-
-class _LiveObserver:
-    """ProcessingObserver that draws the result into a LiveOverlay and reports the tiles being processed."""
-
-    def __init__(self, worker: SegmentWorker, row: int, nodata: float, palette: np.ndarray) -> None:
-        self._worker = worker
-        self._row = row
-        self._nodata = nodata
-        self._palette = palette
-        self._overlay: LiveOverlay | None = None
-
-    def image_started(self, height: int, width: int) -> None:
-        self._overlay = LiveOverlay(height, width, self._nodata, palette=self._palette)
-        self._worker.live_started.emit(self._row, self._overlay)
-
-    def batch_started(self, windows: Sequence[Window]) -> None:
-        if self._overlay is not None:
-            for window in windows:
-                self._overlay.mark_pending(window)
-            self._worker.tiles_started.emit(self._row, [self._overlay.tile_to_preview(w) for w in windows])
-
-    def written(self, window: Window, data: np.ndarray) -> None:
-        if self._overlay is not None:
-            self._overlay.paste(window, data)
 
 
 class SegmentWorker(QObject):
@@ -104,12 +30,12 @@ class SegmentWorker(QObject):
     tiles_started = Signal(int, object)  # Queue row, tiles being processed in LiveOverlay pixels, past its edges too
     finished = Signal()
 
-    def __init__(self, model: ONNXModel, jobs: list[tuple[int, Path, Path]], options: SegmentOptions) -> None:
+    def __init__(self, model: ONNXModel, jobs: list[Job], options: SegmentOptions) -> None:
         """Set up the work.
 
         Args:
             model: Model to run. The worker uses it from its own thread, so leave it alone until the worker is done.
-            jobs: Queue row, input path and output path of each image.
+            jobs: The images to segment.
             options: Processing options, e.g. crop_size.
         """
         super().__init__()
@@ -131,50 +57,16 @@ class SegmentWorker(QObject):
             self.finished.emit()
 
     def _run(self) -> None:
-        self.stage.emit(f"Loading {self._model.name}, which is downloaded the first time it is used…")
-        try:
-            # Shows download progress the first time, through the same progress bar as segmenting
-            self._model.cache.fetch(self._model.cfg, lambda: _QtProgressReporter(self.progress))
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"Could not load {self._model.name}: {e}")
-            for row, _, _ in self._jobs:
-                self.item_finished.emit(row, Status.FAILED, f"Could not load the model: {e}")
-            return
-
-        palette = class_palette(self._model.cfg.classes)
-        for row, input_path, output_path in self._jobs:
-            if self._cancelled.is_set():
-                self.item_finished.emit(row, Status.CANCELLED, "")
-                continue
-
-            self.item_started.emit(row)
-            self.stage.emit(f"Segmenting {input_path.name}")
-            try:
-                self._model.process(
-                    input_path,
-                    output_path,
-                    **self._options.model_dump(),
-                    quiet=True,
-                    # Names each step in the status bar, e.g. "Filtering image.tif" once the model is done
-                    progress=lambda name=input_path.name: _QtProgressReporter(
-                        self.progress, lambda step: self.stage.emit(f"{step} {name}")
-                    ),
-                    cancel=self._cancelled.is_set,
-                    observer=_LiveObserver(self, row, self._model.cfg.nodata_value, palette),
-                )
-            except ProcessingCancelled:
-                logger.info(f"Cancelled {input_path.name}")
-                self.item_finished.emit(row, Status.CANCELLED, "")
-            except Exception as e:  # noqa: BLE001
-                logger.opt(exception=e).debug("Segmentation failed")
-                logger.error(f"Failed to segment {input_path.name}: {e}")
-                self.item_finished.emit(row, Status.FAILED, str(e))
-            else:
-                logger.success(f"Saved {output_path}")
-                self.item_finished.emit(row, Status.DONE, "")
-
-            if self._model.active_device:
-                self.device.emit(self._model.active_device)
+        events = RunEvents(
+            stage=self.stage.emit,
+            progress=self.progress.emit,
+            item_started=self.item_started.emit,
+            item_finished=self.item_finished.emit,
+            device=self.device.emit,
+            live_started=self.live_started.emit,
+            tiles_started=self.tiles_started.emit,
+        )
+        run_jobs(self._model, self._jobs, self._options, events, self._cancelled.is_set)
 
 
 class _Signals(QObject):
