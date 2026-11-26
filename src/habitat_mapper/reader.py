@@ -287,6 +287,8 @@ class SafeProduct:
         """
         self.path = Path(path)
         self._zip = self.path.is_file()
+        if self._zip and self.path.suffix.lower() != ".zip":
+            raise ValueError(f"{self.path} isn't a Sentinel-2 .SAFE folder or a .zip of one.")
         if self._zip:
             try:
                 with zipfile.ZipFile(self.path) as archive:

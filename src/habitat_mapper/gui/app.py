@@ -684,6 +684,7 @@ class MainWindow(QMainWindow):
         # A .SAFE folder and its .zip give results with the same name, so only one of them is queued
         stems = {output_stem(item.input_path) for item in self._items}
         clashes = 0
+        added: list[Path] = []
         for path in paths:
             if path in queued:
                 continue
@@ -692,6 +693,7 @@ class MainWindow(QMainWindow):
                 continue
             queued.add(path)
             stems.add(output_stem(path))
+            added.append(path)
             self._items.append(BatchItem(path))
             row = self._queue.rowCount()
             self._queue.insertRow(row)
@@ -699,9 +701,10 @@ class MainWindow(QMainWindow):
             name.setToolTip(str(path))
             self._queue.setItem(row, 0, name)
             self._set_status(row, Status.QUEUED)
-        if paths and not self._output_dir.text():
-            self._output_dir.setText(str(paths[0].parent))
-        if paths and not self._queue.selectedItems():
+        # Skipped paths are left out, so the results go beside an image that was queued
+        if added and not self._output_dir.text():
+            self._output_dir.setText(str(added[0].parent))
+        if added and not self._queue.selectedItems():
             self._queue.selectRow(self._queue.rowCount() - 1)
         self._update_queue_state()
         messages = [note] if note else []

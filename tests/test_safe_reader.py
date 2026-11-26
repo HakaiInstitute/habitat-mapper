@@ -171,3 +171,11 @@ def test_missing_band_is_reported(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Could not find required Sentinel-2 bands"):
         SAFEReader(zipped)
+
+
+def test_non_zip_file_is_rejected(tmp_path: Path) -> None:
+    image = tmp_path / "scene.tif"
+    image.write_bytes(b"\x00" * 16)
+
+    with pytest.raises(ValueError, match="isn't a Sentinel-2 .SAFE folder or a .zip"):
+        SafeProduct(image)
