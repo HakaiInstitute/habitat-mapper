@@ -109,9 +109,13 @@ class _LiveObserver:
 
     def batch_started(self, windows: Sequence[Window]) -> None:
         if self._overlay is not None:
+            self._events.tiles_started(self._row, [self._overlay.tile_to_preview(w) for w in windows])
+
+    def segmenting(self, windows: Sequence[Window]) -> None:
+        # Only tiles with something to segment are hazed. Background stays clear, as it ends up transparent anyway
+        if self._overlay is not None:
             for window in windows:
                 self._overlay.mark_pending(window)
-            self._events.tiles_started(self._row, [self._overlay.tile_to_preview(w) for w in windows])
 
     def written(self, window: Window, data: np.ndarray) -> None:
         if self._overlay is not None:

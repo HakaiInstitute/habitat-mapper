@@ -113,6 +113,7 @@ class RecordingObserver:
     def __init__(self) -> None:
         self.size: tuple[int, int] | None = None
         self.batches: list[list[Window]] = []
+        self.segmented: list[list[Window]] = []
         self.result: np.ndarray | None = None
 
     def image_started(self, height: int, width: int) -> None:
@@ -121,6 +122,9 @@ class RecordingObserver:
 
     def batch_started(self, windows: Sequence[Window]) -> None:
         self.batches.append(list(windows))
+
+    def segmenting(self, windows: Sequence[Window]) -> None:
+        self.segmented.append(list(windows))
 
     def written(self, window: Window, data: np.ndarray) -> None:
         assert self.result is not None
