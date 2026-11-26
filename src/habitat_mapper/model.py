@@ -189,30 +189,18 @@ class ONNXModel:
         if not inputs:
             raise ValueError("No inputs found in the ONNX model.")
         input_shape = inputs[0].shape
-        if len(input_shape) < 3:
+        if len(input_shape) != 4:
             raise ValueError(
-                "ONNX model input shape must have at least 3 dimensions (batch, channels, height, width).",
+                f"ONNX model input shape must have 4 dimensions (batch, channels, height, width), not {input_shape}."
             )
 
-        h, w = input_shape[2], input_shape[3]
-
-        if isinstance(h, str) and isinstance(w, str):
-            return None  # Dynamic shape, no fixed tile size
-
-        if isinstance(h, int) and h > 0:
-            if h == w or isinstance(w, str):
-                return h
-
-        elif isinstance(w, int) and w > 0:
-            if w == h or isinstance(h, str):
-                return w
-
-        msg = (
-            f""
-            f"Model input shape must be square or dynamic (e.g., [1, 8, 224, 224]). "
-            f"Bad model input shape: {input_shape}"
-        )
-        raise ValueError(msg)
+        # Dynamic dimensions are named (a string) or, if exported without a name, None
+        fixed = {size for size in input_shape[2:] if isinstance(size, int) and size > 0}
+        if len(fixed) > 1:
+            raise ValueError(
+                f"ONNX model input shape must be square or dynamic (e.g., [1, 8, 224, 224]), not {input_shape}."
+            )
+        return fixed.pop() if fixed else None
 
     def preprocess(self, batch: np.ndarray, max_pixel_value: float) -> np.ndarray:
         """Scale and normalize a batch of tiles as the model expects.
@@ -271,16 +259,17 @@ class ONNXModel:
             # Expand single class dim
             batch = np.expand_dims(batch, axis=0)
 
-        if self.cfg.activation == "softmax":
-            batch = softmax(batch, axis=1, keepdims=True)
-        elif self.cfg.activation == "sigmoid":
-            batch = sigmoid(batch)
-
         if batch.shape[1] == 1:
-            # If single dim class, make into binary tensor
-            batch = np.concat([1 - batch, batch], axis=1)
-
-        batch = np.argmax(batch, axis=1, keepdims=False).astype(np.uint8)
+            # One channel is the chance of the class, so it is present where that is over a half
+            if self.cfg.activation == "softmax":
+                batch = softmax(batch, axis=1, keepdims=True)
+            elif self.cfg.activation == "sigmoid":
+                batch = sigmoid(batch)
+            batch = (batch[:, 0] > 0.5).astype(np.uint8)
+        else:
+            # Softmax and sigmoid keep the highest score highest, so they are skipped. In float32 they round large
+            # scores to the same 1.0, which would lose which class scored highest
+            batch = np.argmax(batch, axis=1, keepdims=False).astype(np.uint8)
 
         if undo_batch:
             batch = batch.squeeze(0)
