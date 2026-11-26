@@ -135,7 +135,9 @@ def test_macos_stub_files_are_ignored(tmp_path: Path) -> None:
         archive.writestr(f"__MACOSX/S2B_MSIL2A_X.SAFE/{GRANULE}/R10m/._{band.name}", b"\x00" * 16)
 
     for path in (safe, zipped):
-        assert SafeProduct(path).find("GRANULE/*/IMG_DATA/*_B02_10m.jp2").endswith(f"/{band.name}")
+        # Folder products give native paths, so Windows separates them with backslashes
+        found = SafeProduct(path).find("GRANULE/*/IMG_DATA/*_B02_10m.jp2").replace("\\", "/")
+        assert found.endswith(f"/{band.name}")
         assert SAFEReader(path).num_bands == 5
 
 
