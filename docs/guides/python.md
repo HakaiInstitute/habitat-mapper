@@ -87,6 +87,20 @@ model.process(
 `quiet=True` hides progress bars for segmentation, post-processing and downloads. Errors are never silenced: a
 failure raises an exception either way.
 
+## Logging
+
+Habitat-Mapper logs with [loguru](https://loguru.readthedocs.io/). Importing it doesn't change your program's logging:
+messages go wherever loguru sends them, which is stderr by default. To hide its debug messages, for example:
+
+```python
+import sys
+
+from loguru import logger
+
+logger.remove()
+logger.add(sys.stderr, level="INFO")
+```
+
 ## Show progress, cancel, or preview in your own app
 
 `process()` takes three more arguments for building on Habitat-Mapper:

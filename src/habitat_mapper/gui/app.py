@@ -1215,6 +1215,9 @@ def _ensure_std_streams() -> None:
 def main() -> None:
     """Start the desktop app."""
     _ensure_std_streams()
+    # Replace loguru's default handler, which shows debug messages, with one for people running the app from a terminal
+    logger.remove()
+    logger.add(sys.stderr, level="DEBUG" if os.environ.get("DEBUG") else "INFO")
     add_log_file()
     logger.info(f"Starting Habitat-Mapper {__version__}")
 

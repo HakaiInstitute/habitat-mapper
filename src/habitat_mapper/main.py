@@ -66,14 +66,18 @@ DEBUG = bool(os.getenv("DEBUG", False))
 # Hide debug and trace messages unless DEBUG is set
 LOG_LEVEL = "TRACE" if DEBUG else "INFO"
 
-# Setup Rich logger handler
-logger.remove()
-logger.add(
-    console.print,
-    level=LOG_LEVEL,
-    format=_log_formatter,
-    colorize=None,
-)
+# The handler main() logs to the console with. Only the command line sets it up, so importing the package as a library
+# leaves the program's own logging alone
+_console_sink: int | None = None
+
+
+def _log_to_console(level: str) -> None:
+    """Log to the console at a level, replacing the console handler this module added before, if any."""
+    global _console_sink  # noqa: PLW0603
+    if _console_sink is not None:
+        logger.remove(_console_sink)
+    _console_sink = logger.add(console.print, level=level, format=_log_formatter, colorize=None)
+
 
 # Set by main(), so that errors give a failing exit code from the command line but not when called from Python
 _exit_on_error = False
@@ -90,10 +94,6 @@ logger_catch = logger.catch(
     reraise=DEBUG,
     onerror=_on_error,
 )
-
-# Install rich traceback formatting
-if DEBUG:
-    install()
 
 
 def _follows(rule: object) -> Callable[[type, object], None]:
@@ -395,9 +395,10 @@ def segment(
     ] = False,
 ) -> None:
     """Apply a segmentation model to an input raster and save the output."""
-    if quiet:
-        logger.remove()
-        logger.add(console.print, level="ERROR", format=_log_formatter, colorize=None)
+    # Quiet only changes the command line's own console handler
+    quiet_console = quiet and _console_sink is not None
+    if quiet_console:
+        _log_to_console("ERROR")
 
     try:
         # An unknown revision raises, so that `hab segment` exits with an error code scripts can detect
@@ -438,15 +439,19 @@ def segment(
             )
             console.print(success_panel)
     finally:
-        if quiet:
-            logger.remove()
-            logger.add(console.print, level=LOG_LEVEL, format=_log_formatter, colorize=None)
+        if quiet_console:
+            _log_to_console(LOG_LEVEL)
 
 
 def main() -> None:
     """Run the command line interface."""
     global _exit_on_error  # noqa: PLW0603
     _exit_on_error = True
+    # Replace loguru's default handler, which writes to stderr, with the Rich console
+    logger.remove()
+    _log_to_console(LOG_LEVEL)
+    if DEBUG:
+        install()  # Rich tracebacks
     # Output piped on Windows is encoded with the ANSI code page, which can't encode symbols like ✓. Replace them
     # instead of failing
     for stream in (sys.stdout, sys.stderr):
