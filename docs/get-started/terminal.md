@@ -5,6 +5,9 @@ commands to tell the computer what to do.
 
 You will use the terminal to install Habitat-Mapper and run the image processing tools.
 
+!!! tip "Prefer not to use the terminal?"
+    On Windows or macOS, the [desktop app](desktop-app.md) runs the same models in a window.
+
 ---
 
 ## 1. Opening the Terminal

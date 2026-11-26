@@ -10,10 +10,12 @@ nav = [
   { "Get Started" = [
     "get-started/index.md",
     { "Desktop App" = "get-started/desktop-app.md" },
-    { "1. Using the Terminal" = "get-started/terminal.md" },
-    { "2. Install" = "get-started/install.md" },
-    { "3. Your First Segmentation" = "get-started/first-segmentation.md" },
-    { "4. View Results in GIS" = "get-started/view-results.md" },
+    { "Command Line" = [
+      { "1. Using the Terminal" = "get-started/terminal.md" },
+      { "2. Install" = "get-started/install.md" },
+      { "3. Your First Segmentation" = "get-started/first-segmentation.md" },
+    ] },
+    { "View Results in GIS" = "get-started/view-results.md" },
   ] },
   { "Guides" = [
     { "Prepare Your Imagery" = "guides/prepare-imagery.md" },

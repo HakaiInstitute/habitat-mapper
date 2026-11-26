@@ -1,11 +1,32 @@
 # Get Started
 
-This guide takes you from **no command line experience** to a finished habitat map you can open in ArcGIS Pro or
-QGIS. You don't need to know Python. Follow the steps in order; each one ends with a link to the next.
+This guide takes you from installing Habitat-Mapper to a finished habitat map you can open in ArcGIS Pro or QGIS.
+You don't need to know Python. There are two ways to run Habitat-Mapper. Both use the same models and give the same
+results.
 
-!!! tip "Prefer not to use the terminal?"
-    The [desktop app](desktop-app.md) for Windows and macOS runs the same models in a window, with nothing else to
-    install.
+<div class="grid cards" markdown="1">
+
+-   :material-application-outline: **Desktop app**
+
+    ---
+    For Windows and macOS. Install it like any other program, then pick your images and a model in a window. No
+    terminal needed.
+
+    [:material-arrow-right: Use the desktop app](desktop-app.md)
+
+-   :material-console: **Command line**
+
+    ---
+    For Windows, macOS and Linux. Use it to script or batch your processing, to run on a server, or to use CUDA on
+    an NVIDIA GPU. The steps below assume no command line experience.
+
+    [:material-arrow-right: Start with step 1](terminal.md)
+
+</div>
+
+## Command line steps
+
+Follow these in order; each one ends with a link to the next.
 
 <div class="grid cards" markdown="1" style="grid-template-columns: 1fr;">
 
@@ -30,14 +51,12 @@ QGIS. You don't need to know Python. Follow the steps in order; each one ends wi
 
     [:material-arrow-right: Run it](first-segmentation.md)
 
--   :material-map-check: **4. View Results in GIS**
-
-    ---
-    Open the output in ArcGIS Pro or QGIS and make the classes visible.
-
-    [:material-arrow-right: View results](view-results.md)
-
 </div>
+
+## Then view your results
+
+Whichever way you ran the model, the last step is
+[View Results in GIS](view-results.md): open the output in ArcGIS Pro or QGIS and make the classes visible.
 
 After that, the [guides](../guides/post-process-kelp-drone.md) show how to clean up results and handle other
 imagery.

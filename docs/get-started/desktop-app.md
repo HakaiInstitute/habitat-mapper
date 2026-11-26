@@ -5,13 +5,14 @@ Download it, install it like any other program, and pick your images and a model
 
 !!! info "Desktop app or command line?"
     The desktop app runs models on your GPU through WebGPU, which works with most NVIDIA, AMD, Intel and Apple GPUs, or
-    on your CPU if there's no GPU it can use. To use CUDA on an NVIDIA GPU, or to script Habitat-Mapper, install the
-    [command line version](install.md) instead.
+    on your CPU if there's no GPU it can use. For Linux, to use CUDA on an NVIDIA GPU, or to script Habitat-Mapper,
+    follow the [command line steps](terminal.md) instead.
 
 ## 1. Download
 
 Download the installer for your computer from the
-[latest release](https://github.com/HakaiInstitute/habitat-mapper/releases/latest), under **Assets**:
+[latest release on GitHub](https://github.com/HakaiInstitute/habitat-mapper/releases/latest). The installers are
+listed under **Assets** at the bottom of the release:
 
 | Computer | File |
 |---|---|
@@ -81,7 +82,12 @@ means.
 **Advanced options** has the tile size, band order and filter settings of [`hab segment`](../reference/cli.md).
 [Tune Processing](../guides/tune-processing.md) explains them. Leave them alone unless you need them.
 
-Then [view the results in GIS](view-results.md).
+## 4. View the results in GIS
+
+The app's preview colours each class, but the saved GeoTIFF looks black when you first open it in ArcGIS Pro or QGIS.
+The next page shows how to display it.
+
+[:material-arrow-right: Next: View Results in GIS](view-results.md){ .md-button .md-button--primary }
 
 ## Updates
 

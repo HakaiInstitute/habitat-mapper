@@ -1,5 +1,8 @@
 # View Results in GIS
 
+This is the last step, whether you ran the model in the [desktop app](desktop-app.md) or with
+[`hab segment`](first-segmentation.md).
+
 The output is a GeoTIFF in which each pixel holds a small whole number, or **class value**: `0` for background,
 plus `1`, `2`, … for each habitat the model detects. Because these numbers are so small, GIS software draws the
 whole image almost black until you tell it to colour each value separately.

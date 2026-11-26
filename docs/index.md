@@ -29,6 +29,7 @@ hide:
 *(The artist formerly known as "Kelp-O-Matic")*
 
 [Get Started :material-arrow-right:](get-started/index.md){ .md-button .md-button--primary }
+[Download the desktop app :material-download:](https://github.com/HakaiInstitute/habitat-mapper/releases/latest){ .md-button }
 [View on GitHub :material-github:](https://github.com/HakaiInstitute/habitat-mapper){ .md-button }
 
 </div>
@@ -38,8 +39,10 @@ hide:
 ## What is Habitat-Mapper?
 
 Habitat-Mapper is an open-source tool from the [Hakai Institute](https://hakai.org) that maps coastal habitats in
-drone, aerial and satellite imagery using deep learning. Give it a GeoTIFF and it returns a map of where each
-species was found, ready to open in ArcGIS Pro or QGIS.
+drone, aerial and satellite imagery using deep learning. Give it a GeoTIFF or a Sentinel-2 scene and it returns a
+map of where each species was found, ready to open in ArcGIS Pro or QGIS.
+
+Run it from the **desktop app** on Windows and macOS, or from the **command line** and **Python** on any system.
 
 <div class="grid cards" markdown>
 
@@ -71,7 +74,16 @@ species was found, ready to open in ArcGIS Pro or QGIS.
 
 <div class="grid cards" markdown>
 
--   :material-school: **New to the terminal or Python?**
+-   :material-application-outline: **Want to point and click?**
+
+    ---
+    Download the desktop app for Windows or macOS from
+    [GitHub Releases](https://github.com/HakaiInstitute/habitat-mapper/releases/latest). Install it like any other
+    program, then add your images, pick a model and click **Run**. No terminal or Python needed.
+
+    [:material-arrow-right: Desktop app guide](get-started/desktop-app.md)
+
+-   :material-school: **New to the terminal?**
 
     ---
     Our step-by-step guide assumes no prior experience. It covers opening a terminal, installing the
