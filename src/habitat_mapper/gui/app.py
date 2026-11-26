@@ -60,7 +60,13 @@ from habitat_mapper.gui import theme
 from habitat_mapper.gui.batch import BatchItem, Status, existing_outputs, output_path_for, output_stem
 from habitat_mapper.gui.canvas import PreviewCanvas
 from habitat_mapper.gui.diagnostics import LOG_DIR, add_log_file, diagnostics_report
-from habitat_mapper.gui.model_info import accepted_inputs, default_band_order, input_description, reads_safe
+from habitat_mapper.gui.model_info import (
+    accepted_inputs,
+    default_band_order,
+    describe_option_errors,
+    input_description,
+    reads_safe,
+)
 from habitat_mapper.gui.models_dialog import ModelsDialog
 from habitat_mapper.gui.preview import (
     DEFAULT_PALETTE,
@@ -82,6 +88,7 @@ if TYPE_CHECKING:
     from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragLeaveEvent, QDropEvent
 
     from habitat_mapper.config import ModelConfig, OutputClass
+    from habitat_mapper.model import ONNXModel
 
 # How often the preview of the image being processed is redrawn
 _LIVE_REFRESH_MS = 200
@@ -209,6 +216,8 @@ class MainWindow(QMainWindow):
         self._items: list[BatchItem] = []
         self._thread: QThread | None = None
         self._worker: SegmentWorker | None = None
+        # The model of the last run, kept so its session stays loaded for the next run with the same model
+        self._loaded_model: ONNXModel | None = None
         self._active_device: str | None = None
         self._preview_request = 0
         # Queue row the preview shows, and the row being processed with its result so far and current tiles
@@ -930,7 +939,7 @@ class MainWindow(QMainWindow):
                 band_order=self._parse_band_order(),
             )
         except ValidationError as e:
-            raise ValueError(e.errors()[0]["msg"].removeprefix("Value error, ")) from None
+            raise ValueError(describe_option_errors(e)) from None
 
     def _parse_band_order(self) -> list[int] | None:
         """Read the band order option.
@@ -967,7 +976,10 @@ class MainWindow(QMainWindow):
 
         name = self._model.currentData()
         revision = self._revision.currentText()
-        model = model_registry[name, revision]
+        model = self._loaded_model
+        if model is None or (model.name, model.revision) != (name, revision):
+            # Only one model is kept loaded, since each can take a lot of memory
+            model = self._loaded_model = model_registry[name, revision]
 
         # Images already done with this model and output folder aren't run again
         def is_done(item: BatchItem) -> bool:

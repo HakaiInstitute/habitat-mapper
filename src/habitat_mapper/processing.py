@@ -76,6 +76,26 @@ class Segmenter(Protocol):
         ...
 
 
+def band_order_for(cfg: ModelConfig, band_order: list[int] | None) -> list[int]:
+    """Check a band order against the number of bands a model takes.
+
+    Args:
+        cfg: The model's configuration.
+        band_order: Band numbers, starting at 1, or None for the image's first bands in order.
+
+    Returns:
+        The band order to use.
+
+    Raises:
+        ValueError: If band_order doesn't have one band for each of the model's inputs.
+    """
+    channels = cfg.input_channels
+    band_order = band_order or list(range(1, channels + 1))
+    if len(band_order) != channels:
+        raise ValueError(f"{cfg.name} takes {channels} bands, but band_order has {len(band_order)}.")
+    return band_order
+
+
 @dataclass(frozen=True)
 class ImageProcessor:
     """Segments a large image tile by tile, blending overlapping tiles, then smooths the result."""
@@ -94,6 +114,8 @@ class ImageProcessor:
     ) -> ImageProcessor:
         """Resolve the options against the model, e.g. using the model's tile size.
 
+        The band order is checked with `band_order_for`, which raises a ValueError if it doesn't suit the model.
+
         Args:
             model: The model to run.
             options: Processing options. Defaults to SegmentOptions().
@@ -101,15 +123,9 @@ class ImageProcessor:
 
         Returns:
             Configured ImageProcessor instance
-
-        Raises:
-            ValueError: If band_order has more bands than the model takes.
         """
         options = options or SegmentOptions()
-        channels = model.cfg.input_channels
-        band_order = options.band_order or list(range(1, channels + 1))
-        if len(band_order) != channels:
-            raise ValueError(f"{model.cfg.name} takes {channels} bands, but band_order has {len(band_order)}.")
+        band_order = band_order_for(model.cfg, options.band_order)
 
         crop_size = options.crop_size
         if crop_size is None:

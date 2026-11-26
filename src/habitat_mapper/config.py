@@ -22,13 +22,13 @@ if TYPE_CHECKING:
 
 def _is_even(value: int) -> int:
     if value % 2:
-        raise ValueError("Tile size must be an even number.")
+        raise ValueError("Must be an even number.")
     return value
 
 
 def _is_odd_or_zero(value: int) -> int:
     if value and value % 2 == 0:
-        raise ValueError("Kernel sizes must be an odd number, or 0 to turn the filter off.")
+        raise ValueError("Must be an odd number, or 0 to turn the filter off.")
     return value
 
 
@@ -55,8 +55,8 @@ class OutputClass(BaseModel):
 class ModelConfig(BaseModel):
     """ONNXModel configuration for ONNX semantic segmentation models.
 
-    Configs are frozen, since one config is shared by every model made from it. Use `model_copy(update={...})` to make
-    a changed copy.
+    Configs are frozen, since one config is shared by every model made from it. Use `with_changes` to make a changed
+    copy.
     """
 
     model_config = ConfigDict(frozen=True, validate_default=True)
@@ -130,6 +130,19 @@ class ModelConfig(BaseModel):
         dict[str, Any],
         "Additional keyword arguments to pass to the reader constructor",
     ] = Field(default_factory=dict)
+
+    def with_changes(self, **changes: Any) -> "ModelConfig":  # noqa: ANN401
+        """Make a copy of the config with some fields changed, checked like a new config.
+
+        Unlike `model_copy(update=...)`, the changes are validated, e.g. a `reader_cls` string is imported.
+
+        Args:
+            **changes: New field values, e.g. `max_pixel_value=10000.0`.
+
+        Returns:
+            The changed copy.
+        """
+        return type(self).model_validate({**self.model_dump(), **changes})
 
     def max_pixel_value_for(self, dtype: str) -> float:
         """The value to scale an image's pixels by, resolving "auto" from the image's data type.

@@ -21,6 +21,7 @@ class _Recorded:
         self.options: SegmentOptions | None = None
         self.progress: object = None
         self.fetch_progress: list[object] = []
+        self.device: object = None
 
 
 @pytest.fixture
@@ -32,7 +33,7 @@ def recorded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> _Recorded:
             pass
 
     def from_model(model: ONNXModel, options: SegmentOptions, *, progress: object) -> _Processor:
-        recorded.options, recorded.progress = options, progress
+        recorded.options, recorded.progress, recorded.device = options, progress, model.device
         return _Processor()
 
     monkeypatch.setattr(ImageProcessor, "from_model", staticmethod(from_model))
@@ -72,13 +73,34 @@ def test_given_progress_is_used(model: ONNXModel, recorded: _Recorded) -> None:
 def test_options_are_passed_on(model: ONNXModel, recorded: _Recorded) -> None:
     model.process("in.tif", "out.tif", crop_size=512, blur_kernel_size=5, band_order=[3, 2, 1], device="cpu")
     assert recorded.options == SegmentOptions(crop_size=512, blur_kernel_size=5, band_order=[3, 2, 1], device="cpu")
-    assert model.device == "cpu"
+    assert recorded.device == "cpu"
+
+
+def test_device_is_for_one_call_only(model: ONNXModel, recorded: _Recorded) -> None:
+    model.device = "cuda"
+    model.process("in.tif", "out.tif", device="cpu")
+    assert recorded.device == "cpu"
+    assert model.device == "cuda"
+    model.process("in.tif", "out.tif")
+    assert recorded.device == "cuda"
+
+
+def test_wrong_band_count_is_reported_before_downloading(model: ONNXModel, recorded: _Recorded) -> None:
+    with pytest.raises(ValueError, match="takes 3 bands"):
+        model.process("in.tif", "out.tif", band_order=[3, 2])
+    assert recorded.fetch_progress == []
+
+
+def test_loaded_model_is_not_fetched_again(model: ONNXModel, recorded: _Recorded) -> None:
+    model._session = object()  # type: ignore[assignment]
+    model.process("in.tif", "out.tif")
+    assert recorded.fetch_progress == []
 
 
 @pytest.mark.parametrize(
     ("option", "message"),
     [
-        ({"crop_size": 511}, "Tile size must be an even number"),
+        ({"crop_size": 511}, "Must be an even number"),
         ({"blur_kernel_size": 4}, "odd number"),
         ({"band_order": [0, 1, 2]}, "Band numbers start at 1"),
     ],

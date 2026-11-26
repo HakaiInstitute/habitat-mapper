@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from habitat_mapper.config import ModelConfig
 from habitat_mapper.model import ONNXModel
-from habitat_mapper.reader import TIFFReader
+from habitat_mapper.reader import SAFEReader, TIFFReader
 from habitat_mapper.registry import ModelRegistry
 
 CONFIGS_DIR = Path(__file__).parent.parent / "src" / "habitat_mapper" / "configs"
@@ -41,6 +41,15 @@ def test_import_string_defaults_are_resolved() -> None:
     config = _config()
     assert config.model_cls is ONNXModel
     assert config.reader_cls is TIFFReader
+
+
+def test_with_changes_validates_the_changes() -> None:
+    changed = _config().with_changes(reader_cls="habitat_mapper.reader.SAFEReader", max_pixel_value=10000.0)
+    assert changed.reader_cls is SAFEReader
+    assert changed.max_pixel_value == 10000.0
+    assert changed.model_cls is ONNXModel
+    with pytest.raises(ValidationError):
+        _config().with_changes(max_pixel_value="abc")
 
 
 def test_registry_makes_a_new_model_for_each_lookup() -> None:

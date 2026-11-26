@@ -99,7 +99,7 @@ class SegmentWorker(QObject):
         """Set up the work.
 
         Args:
-            model: Model to run. The worker uses it from its own thread, so don't share it.
+            model: Model to run. The worker uses it from its own thread, so leave it alone until the worker is done.
             jobs: Queue row, input path and output path of each image.
             options: Processing options, e.g. crop_size.
         """

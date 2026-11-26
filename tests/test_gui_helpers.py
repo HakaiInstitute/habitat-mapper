@@ -10,11 +10,17 @@ import numpy as np
 import pytest
 import rasterio
 import requests
+from pydantic import ValidationError
 from rasterio.windows import Window
 
-from habitat_mapper.config import OutputClass
+from habitat_mapper.config import OutputClass, SegmentOptions
 from habitat_mapper.gui.batch import BatchItem, existing_outputs, output_path_for, output_stem
-from habitat_mapper.gui.model_info import accepted_inputs, default_band_order, input_description
+from habitat_mapper.gui.model_info import (
+    accepted_inputs,
+    default_band_order,
+    describe_option_errors,
+    input_description,
+)
 from habitat_mapper.gui.preview import (
     DEFAULT_PALETTE,
     PENDING_RGBA,
@@ -176,6 +182,15 @@ def test_input_description_and_default_band_order() -> None:
     assert input_description(model_registry["kelp-rgbi"].cfg) == "RGB + near-infrared GeoTIFF"
     assert input_description(model_registry["kelp-skema"].cfg) == "Sentinel-2 L2A .SAFE.zip or .SAFE folder"
     assert default_band_order(model_registry["kelp-rgbi"].cfg) == "1, 2, 3, 4"
+
+
+def test_option_errors_name_each_option() -> None:
+    with pytest.raises(ValidationError) as error:
+        SegmentOptions(blur_kernel_size=3, morph_kernel_size=4, crop_size=-2)
+    assert describe_option_errors(error.value).splitlines() == [
+        "Tile size: Input should be greater than 0",
+        "Morphological filter: Must be an odd number, or 0 to turn the filter off.",
+    ]
 
 
 def test_accepted_inputs(tmp_path: Path) -> None:

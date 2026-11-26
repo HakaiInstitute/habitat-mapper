@@ -127,7 +127,7 @@ model.process("site_01.tif", "site_01_mine.tif")
 ```
 
 A `ModelConfig` can't be changed once it is made, because every model made from it shares it. Make a changed copy
-instead, e.g. `config.model_copy(update={"max_pixel_value": 10000.0})`. If your model's outputs need different handling
+instead, e.g. `config.with_changes(max_pixel_value=10000.0)`. If your model's outputs need different handling
 to turn them into classes, subclass `ONNXModel` and override `postprocess`.
 
 ## Going further

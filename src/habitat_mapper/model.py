@@ -13,7 +13,7 @@ from onnxruntime.capi.onnxruntime_pybind11_state import InvalidProtobuf
 from habitat_mapper.accelerators import create_session, describe_provider
 from habitat_mapper.cache import ModelCache, model_cache
 from habitat_mapper.config import ModelConfig, SegmentOptions
-from habitat_mapper.processing import ImageProcessor
+from habitat_mapper.processing import ImageProcessor, band_order_for
 from habitat_mapper.progress import NullProgressReporter, RichProgressReporter
 from habitat_mapper.utils import sigmoid, softmax
 
@@ -344,14 +344,23 @@ class ONNXModel:
             band_order=band_order,
             device=device,
         )
-        if options.device is not None:
-            self.device = options.device
-        # Download the model first, so that its progress is shown like the rest
-        self.cache.fetch(self.cfg, progress or (NullProgressReporter if quiet else _download_bars))
+        # Checked before downloading, so a wrong band order doesn't wait for a large download
+        band_order_for(self.cfg, options.band_order)
+        if self._session is None:
+            # Download the model first, so that its progress is shown like the rest
+            self.cache.fetch(self.cfg, progress or (NullProgressReporter if quiet else _download_bars))
         if progress is None:
             progress = NullProgressReporter if quiet else RichProgressReporter
-        processor = ImageProcessor.from_model(self, options, progress=progress)
-        processor.run(img_path, output_path, cancel=cancel, observer=observer)
+
+        # A device given here is for this image only
+        default_device = self.device
+        if options.device is not None:
+            self.device = options.device
+        try:
+            processor = ImageProcessor.from_model(self, options, progress=progress)
+            processor.run(img_path, output_path, cancel=cancel, observer=observer)
+        finally:
+            self.device = default_device
 
 
 def _download_bars() -> RichProgressReporter:
