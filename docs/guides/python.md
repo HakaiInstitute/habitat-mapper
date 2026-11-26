@@ -13,11 +13,11 @@ All models are available through `model_registry`:
 ```python
 from habitat_mapper import model_registry
 
-model_registry.list_model_names()       # ['kelp-rgb', 'kelp-rgbi', 'mussel-rgb', ...]
-model_registry.list_models()            # [(name, revision), ...]
+model_registry.list_model_names()  # ['kelp-rgb', 'kelp-rgbi', 'mussel-rgb', ...]
+model_registry.list_models()  # [(name, revision), ...]
 model_registry.get_latest_revision("kelp-rgb")
 
-model = model_registry["kelp-rgb"]              # latest revision
+model = model_registry["kelp-rgb"]  # latest revision
 model = model_registry["kelp-rgb", "20240722"]  # a specific revision
 ```
 

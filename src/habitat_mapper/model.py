@@ -52,17 +52,17 @@ class ONNXModel:
 
     @property
     def name(self) -> str:
-        """Get the model name."""
+        """The model name."""
         return self.cfg.name
 
     @property
     def description(self) -> str:
-        """Get a description of the model."""
+        """A description of the model."""
         return self.cfg.description or ""
 
     @property
     def revision(self) -> str:
-        """Get the model revision string."""
+        """The model revision string."""
         return self.cfg.revision
 
     @property
@@ -103,7 +103,7 @@ class ONNXModel:
 
     @cached_property
     def _input_name(self) -> str:
-        """Get the input name for the model.
+        """The name of the model's input.
 
         Returns:
             Input name as a string.
@@ -118,10 +118,10 @@ class ONNXModel:
 
     @cached_property
     def input_size(self) -> int | None:
-        """Get the input tile size from the model configuration.
+        """The square tile size the model takes, or None if it takes any size.
 
         Returns:
-            Tuple of (height, width) or None if not specified.
+            The tile size in pixels, or None if the model accepts any size.
 
         Raises:
             ValueError: If the model input shape is not valid.

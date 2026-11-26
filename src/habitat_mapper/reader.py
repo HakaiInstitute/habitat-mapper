@@ -467,11 +467,11 @@ class SAFEReader(ImageReader):
     def height(self) -> int:
         """Height of the image in pixels.
 
-        Raises:
-            RuntimeError: If band data has not been loaded.
-
         Returns:
             Height in pixels.
+
+        Raises:
+            RuntimeError: If band data has not been loaded.
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
@@ -481,11 +481,11 @@ class SAFEReader(ImageReader):
     def width(self) -> int:
         """Width of the image in pixels.
 
-        Raises:
-            RuntimeError: If band data has not been loaded.
-
         Returns:
             Width in pixels.
+
+        Raises:
+            RuntimeError: If band data has not been loaded.
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
@@ -495,11 +495,11 @@ class SAFEReader(ImageReader):
     def num_bands(self) -> int:
         """Number of bands.
 
-        Raises:
-            RuntimeError: If band data has not been loaded.
-
         Returns:
             Number of bands.
+
+        Raises:
+            RuntimeError: If band data has not been loaded.
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
@@ -509,11 +509,11 @@ class SAFEReader(ImageReader):
     def dtype(self) -> str:
         """Data type of the image.
 
-        Raises:
-            RuntimeError: If band data has not been loaded.
-
         Returns:
             Data type string.
+
+        Raises:
+            RuntimeError: If band data has not been loaded.
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
@@ -523,11 +523,11 @@ class SAFEReader(ImageReader):
     def crs(self) -> object:
         """Coordinate Reference System of the image.
 
-        Raises:
-            RuntimeError: If band data has not been loaded.
-
         Returns:
             CRS object.
+
+        Raises:
+            RuntimeError: If band data has not been loaded.
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
@@ -537,11 +537,11 @@ class SAFEReader(ImageReader):
     def transform(self) -> object:
         """Geospatial affine transform.
 
-        Raises:
-            RuntimeError: If band data has not been loaded.
-
         Returns:
             Affine transform object.
+
+        Raises:
+            RuntimeError: If band data has not been loaded.
         """
         if self._stacked is None:
             raise RuntimeError("Band data not loaded")
