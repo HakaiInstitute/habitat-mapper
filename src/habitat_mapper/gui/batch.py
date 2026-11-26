@@ -31,6 +31,7 @@ class BatchItem:
         output_path: Where the segmentation was written, once it is done.
         error: Why processing failed, if it did.
         model_name: Model the output was made with, to colour and label it.
+        model_revision: Revision of that model.
     """
 
     input_path: Path
@@ -38,6 +39,7 @@ class BatchItem:
     output_path: Path | None = None
     error: str | None = None
     model_name: str | None = None
+    model_revision: str | None = None
 
 
 def output_stem(input_path: Path) -> str:
