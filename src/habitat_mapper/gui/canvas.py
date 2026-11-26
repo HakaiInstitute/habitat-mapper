@@ -30,6 +30,12 @@ _TILE_PEN.setCosmetic(True)  # Same width at every zoom level
 _OFF_IMAGE_PEN = QPen(_TILE_PEN)
 _OFF_IMAGE_PEN.setStyle(Qt.PenStyle.DashLine)
 _CONTROLS_MARGIN = 10
+# Slim position indicators drawn over the image in place of scroll bars, which take space and crowd the controls
+_INDICATOR_WIDTH = 4
+_INDICATOR_INSET = 4
+_INDICATOR_MIN_LENGTH = 24
+_INDICATOR_COLOUR = QColor(255, 255, 255, 150)
+_INDICATOR_TRACK_COLOUR = QColor(10, 51, 53, 120)
 
 
 def _to_pixmap(array: np.ndarray) -> QPixmap:
@@ -52,6 +58,11 @@ class PreviewCanvas(QGraphicsView):
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         self.setBackgroundBrush(QColor(theme.TEAL_DEEP))
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
+        # Drag to pan; where the view is in the image is drawn by _paint_indicators instead
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # Scrolling by copying pixels would drag the indicators along with the image
+        self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         # Files dropped on the canvas are handled by the window
         self.setAcceptDrops(False)
@@ -228,12 +239,12 @@ class PreviewCanvas(QGraphicsView):
             self.fit()
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
-        """Draw the image, then the empty state message and the drop outline over it when needed."""
+        """Draw the image, then the position indicators, empty state message and drop outline over it when needed."""
         super().paintEvent(event)
-        if self.has_image() and not self._drop_highlight:
-            return
         painter = QPainter(self.viewport())
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self.has_image():
+            self._paint_indicators(painter)
         area = QRectF(self.viewport().rect()).adjusted(14, 14, -14, -14)
         if self._drop_highlight:
             pen = QPen(QColor(theme.OCHRE), 2, Qt.PenStyle.DashLine)
@@ -243,6 +254,34 @@ class PreviewCanvas(QGraphicsView):
         if not self.has_image():
             self._paint_placeholder(painter, area)
         painter.end()
+
+    def _paint_indicators(self, painter: QPainter) -> None:
+        """Show which part of the image is in view along the bottom and right edges, stopping short of the controls."""
+        view = QRectF(self.viewport().rect())
+        controls = QRectF(self._controls.geometry())
+        far = _INDICATOR_INSET + _INDICATOR_WIDTH
+        tracks = (
+            (self.horizontalScrollBar(), QRectF(far, view.bottom() - far, controls.left() - 2 * far, _INDICATOR_WIDTH)),
+            (self.verticalScrollBar(), QRectF(view.right() - far, far, _INDICATOR_WIDTH, controls.top() - 2 * far)),
+        )
+        painter.setPen(Qt.PenStyle.NoPen)
+        radius = _INDICATOR_WIDTH / 2
+        for bar, track in tracks:
+            vertical = bar.orientation() == Qt.Orientation.Vertical
+            span = bar.maximum() - bar.minimum()
+            length = track.height() if vertical else track.width()
+            if span <= 0 or length < 2 * _INDICATOR_MIN_LENGTH:
+                continue
+            thumb_length = max(_INDICATOR_MIN_LENGTH, length * bar.pageStep() / (span + bar.pageStep()))
+            offset = (length - thumb_length) * (bar.value() - bar.minimum()) / span
+            if vertical:
+                thumb = QRectF(track.left(), track.top() + offset, track.width(), thumb_length)
+            else:
+                thumb = QRectF(track.left() + offset, track.top(), thumb_length, track.height())
+            painter.setBrush(_INDICATOR_TRACK_COLOUR)
+            painter.drawRoundedRect(track, radius, radius)
+            painter.setBrush(_INDICATOR_COLOUR)
+            painter.drawRoundedRect(thumb, radius, radius)
 
     def _paint_placeholder(self, painter: QPainter, area: QRectF) -> None:
         title, detail = self._placeholder
