@@ -21,7 +21,16 @@ model = model_registry["kelp-rgb"]  # latest revision
 model = model_registry["kelp-rgb", "20240722"]  # a specific revision
 ```
 
-Model weights download on first use and are cached for later runs.
+Model weights download on first use and are cached for later runs. To download ahead of time, e.g. before working
+offline, or to check what's there, use `model_cache`:
+
+```python
+from habitat_mapper import model_cache
+
+cfg = model_registry["kelp-rgb"].cfg
+model_cache.is_cached(cfg)  # True once its files are downloaded
+model_cache.fetch(cfg)  # downloads anything missing, and returns the model file's path
+```
 
 Each lookup makes a new model, so keep the one you got to process several images: it loads the model onto your
 hardware once, the first time it runs, and reuses it for every later image.

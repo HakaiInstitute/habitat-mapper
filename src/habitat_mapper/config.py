@@ -1,5 +1,6 @@
 """Configuration models for segmentation processing and ONNX models."""
 
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
@@ -14,7 +15,6 @@ from pydantic import (
 )
 
 from habitat_mapper.accelerators import Device  # noqa: TC001 (Pydantic needs it at runtime)
-from habitat_mapper.utils import download_dependencies, get_local_model_dir
 
 if TYPE_CHECKING:
     from habitat_mapper.reader import ImageReader
@@ -158,52 +158,21 @@ class ModelConfig(BaseModel):
             f"Unsupported image data type {dtype} for model. Convert your image to uint8 or uint16 before processing."
         )
 
-    def get_local_dependency_paths(self, quiet: bool = False) -> dict[str, Path]:
-        """Get local paths to all dependency files.
-
-        Downloads dependencies in parallel if they are URLs and not yet cached.
-
-        Args:
-            quiet: If True, suppress download progress bars.
-
-        Returns:
-            Dict mapping filenames to local paths for all dependencies
-        """
-        dep_paths = download_dependencies(self, quiet=quiet)
-        # Create a dict mapping filename to path for easy lookup
-        return {path.name: path for path in dep_paths}
-
     def get_local_model_path(self, quiet: bool = False) -> Path:
-        """Get the local path to the ONNX model file.
-
-        Downloads all dependencies (including the model) if needed.
-
-        Args:
-            quiet: If True, suppress download progress bars.
+        """Deprecated: use `habitat_mapper.model_cache.fetch(cfg)`.
 
         Returns:
-            Path to the local ONNX model file
-
-        Raises:
-            ValueError: If model_filename not found in dependencies
+            The local path of the model's ONNX file, downloading it first if needed.
         """
-        # Download all dependencies (this will be cached on subsequent calls)
-        dep_paths = self.get_local_dependency_paths(quiet=quiet)
+        warnings.warn(
+            "ModelConfig.get_local_model_path is deprecated. Use habitat_mapper.model_cache.fetch(cfg) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        from habitat_mapper.cache import model_cache  # noqa: PLC0415 (the cache imports this module)
+        from habitat_mapper.progress import NullProgressReporter, RichProgressReporter  # noqa: PLC0415
 
-        # Find the model file by name
-        if self.model_filename not in dep_paths:
-            raise ValueError(
-                f"Model file '{self.model_filename}' not found in dependencies. "
-                f"Available files: {list(dep_paths.keys())}"
-            )
-
-        model_path = dep_paths[self.model_filename]
-
-        # Validate it's an ONNX file
-        if not model_path.suffix.lower() == ".onnx":
-            logger.warning(f"Model file does not have .onnx extension: {model_path}")
-
-        return model_path
+        return model_cache.fetch(self, NullProgressReporter if quiet else lambda: RichProgressReporter(transfer=True))
 
     def get_reader(self, input_path: str | Path) -> "ImageReader":
         """Instantiate the configured ImageReader for the given input.
@@ -217,14 +186,8 @@ class ModelConfig(BaseModel):
         Raises:
             TypeError: If input_path is not compatible with the reader
         """
-        # Handle special __model_cache__ string
-        model_cache_dir = get_local_model_dir(self.name, self.revision)
-        kwargs = {
-            k: (v.replace("__model_cache__", str(model_cache_dir)) if isinstance(v, str) else v)
-            for k, v in self.reader_kwargs.items()
-        }
         try:
-            return self.reader_cls(input_path, **kwargs)
+            return self.reader_cls(input_path, **self.reader_kwargs)
         except TypeError as e:
             # Re-raise with additional context about the reader and provided arguments
             raise TypeError(f"Cannot instantiate {self.reader_cls.__name__} with the provided arguments: {e}") from e

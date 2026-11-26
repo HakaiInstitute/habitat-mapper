@@ -36,22 +36,26 @@ class _Session:
         return [np.zeros((1, 2, 8, 8), dtype=np.float32)]
 
 
-@pytest.fixture
-def quiet_calls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[bool]:
-    calls: list[bool] = []
+class _Cache:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.fetches = 0
 
-    def get_local_model_path(self: ModelConfig, quiet: bool = False) -> Path:
-        calls.append(quiet)
-        return tmp_path / "model.onnx"
-
-    monkeypatch.setattr(ModelConfig, "get_local_model_path", get_local_model_path)
-    return calls
+    def fetch(self, cfg: ModelConfig, progress: object = None) -> Path:
+        self.fetches += 1
+        return self.path
 
 
 @pytest.fixture
-def model(monkeypatch: pytest.MonkeyPatch, quiet_calls: list[bool]) -> ONNXModel:
+def cache(tmp_path: Path) -> _Cache:
+    return _Cache(tmp_path / "model.onnx")
+
+
+@pytest.fixture
+def model(monkeypatch: pytest.MonkeyPatch, cache: _Cache) -> ONNXModel:
     monkeypatch.setattr(model_module, "describe_provider", lambda provider: provider)
-    return ONNXModel(ModelConfig(name="stub", revision="20250101", dependencies=[], model_filename="model.onnx"))
+    cfg = ModelConfig(name="stub", revision="20250101", dependencies=[], model_filename="model.onnx")
+    return ONNXModel(cfg, cache=cache)  # type: ignore[arg-type]
 
 
 def _use_sessions(monkeypatch: pytest.MonkeyPatch, sessions: list[_Session]) -> list[set[str]]:
@@ -82,14 +86,14 @@ def test_first_batch_failure_retries_on_the_next_device(model: ONNXModel, monkey
 
 
 def test_retry_does_not_load_the_model_file_again(
-    model: ONNXModel, monkeypatch: pytest.MonkeyPatch, quiet_calls: list[bool]
+    model: ONNXModel, monkeypatch: pytest.MonkeyPatch, cache: _Cache
 ) -> None:
     _use_sessions(
         monkeypatch,
         [_Session("CUDAExecutionProvider", fail_on_run=1), _Session("WebGpuExecutionProvider", fail_on_run=None)],
     )
     model.predict(np.zeros((1, 3, 8, 8), dtype=np.uint8), 255)
-    assert quiet_calls == [True]
+    assert cache.fetches == 1
 
 
 def test_changing_device_loads_a_new_session(model: ONNXModel, monkeypatch: pytest.MonkeyPatch) -> None:

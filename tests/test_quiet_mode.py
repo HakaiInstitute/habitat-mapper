@@ -20,7 +20,7 @@ class _Recorded:
     def __init__(self) -> None:
         self.options: SegmentOptions | None = None
         self.progress: object = None
-        self.fetch_quiet: list[bool] = []
+        self.fetch_progress: list[object] = []
 
 
 @pytest.fixture
@@ -35,35 +35,38 @@ def recorded(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> _Recorded:
         recorded.options, recorded.progress = options, progress
         return _Processor()
 
-    def get_local_model_path(self: ModelConfig, quiet: bool = False) -> Path:
-        recorded.fetch_quiet.append(quiet)
-        return tmp_path / "model.onnx"
-
     monkeypatch.setattr(ImageProcessor, "from_model", staticmethod(from_model))
-    monkeypatch.setattr(ModelConfig, "get_local_model_path", get_local_model_path)
     return recorded
 
 
 @pytest.fixture
-def model() -> ONNXModel:
-    return ONNXModel(ModelConfig(name="stub", revision="20250101", dependencies=[], model_filename="model.onnx"))
+def model(recorded: _Recorded, tmp_path: Path) -> ONNXModel:
+    class _Cache:
+        def fetch(self, cfg: ModelConfig, progress: object = None) -> Path:
+            recorded.fetch_progress.append(progress)
+            return tmp_path / "model.onnx"
+
+    cfg = ModelConfig(name="stub", revision="20250101", dependencies=[], model_filename="model.onnx")
+    return ONNXModel(cfg, cache=_Cache())  # type: ignore[arg-type]
 
 
 def test_progress_bars_by_default(model: ONNXModel, recorded: _Recorded) -> None:
     model.process("in.tif", "out.tif")
     assert recorded.progress is RichProgressReporter
-    assert recorded.fetch_quiet == [False]
+    [download_progress] = recorded.fetch_progress
+    assert isinstance(download_progress(), RichProgressReporter)
 
 
 def test_quiet_hides_progress_and_download_bars(model: ONNXModel, recorded: _Recorded) -> None:
     model.process("in.tif", "out.tif", quiet=True)
     assert recorded.progress is NullProgressReporter
-    assert recorded.fetch_quiet == [True]
+    assert recorded.fetch_progress == [NullProgressReporter]
 
 
 def test_given_progress_is_used(model: ONNXModel, recorded: _Recorded) -> None:
     model.process("in.tif", "out.tif", quiet=True, progress=RichProgressReporter)
     assert recorded.progress is RichProgressReporter
+    assert recorded.fetch_progress == [RichProgressReporter]
 
 
 def test_options_are_passed_on(model: ONNXModel, recorded: _Recorded) -> None:

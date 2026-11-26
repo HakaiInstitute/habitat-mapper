@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import itertools
 import os
 import sys
 from importlib.metadata import PackageNotFoundError, version
@@ -11,7 +10,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 import humanize
-import platformdirs
 from cyclopts import App, Parameter
 from cyclopts.types import File, PositiveInt  # noqa: TC002
 from loguru import logger
@@ -25,12 +23,15 @@ from rich.table import Table
 from rich.traceback import install
 
 from habitat_mapper.accelerators import DEVICE_ENV_VAR, Device, find_accelerators, select_accelerators
+from habitat_mapper.cache import model_cache
 from habitat_mapper.config import BandOrder, KernelSize, TileSize
 from habitat_mapper.registry import model_registry
-from habitat_mapper.utils import get_local_model_dir, is_url
+from habitat_mapper.utils import is_url
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from habitat_mapper.config import ModelConfig
 
 app = App(name="hab", help="Habitat segmentation of geospatial imagery with AI.")
 console = Console()
@@ -141,6 +142,12 @@ def _existing_image_validator(type_: type, value: Path | str) -> None:
         raise TypeError(f"Input must be a file or SAFE directory, got: {path}")
 
 
+def _cache_status(cfg: ModelConfig) -> str:
+    if not any(is_url(dep) for dep in cfg.dependencies):
+        return "[green]Local[/green]"
+    return "[green]Cached[/green]" if model_cache.is_cached(cfg) else "[yellow]Available[/yellow]"
+
+
 @app.command
 @logger_catch
 def models() -> None:
@@ -161,17 +168,7 @@ def models() -> None:
             cfg = model.cfg
             is_beta = cfg.beta
 
-            # Check if model is cached locally
-            # Check if any dependency is a URL
-            has_remote_deps = any(is_url(dep) for dep in cfg.dependencies)
-            if has_remote_deps:
-                # Check if the model file exists in the cache
-                model_dir = get_local_model_dir(cfg.name, cfg.revision)
-                model_file_path = model_dir / cfg.model_filename
-                status = "[green]Cached[/green]" if model_file_path.exists() else "[yellow]Available[/yellow]"
-            else:
-                # All dependencies are local paths
-                status = "[green]Local[/green]"
+            status = _cache_status(cfg)
 
             table.add_row(
                 f"{model_name}{' [i][red](beta)[/red][/i]' if is_beta else ''}",
@@ -227,17 +224,7 @@ def revisions(
         for revision in revs:
             cfg = models_by_revision[revision]
 
-            # Check if model is cached locally
-            # Check if any dependency is a URL
-            has_remote_deps = any(is_url(dep) for dep in cfg.dependencies)
-            if has_remote_deps:
-                # Check if the model file exists in the cache
-                model_dir = get_local_model_dir(cfg.name, cfg.revision)
-                model_file_path = model_dir / cfg.model_filename
-                status = "[green]Cached[/green]" if model_file_path.exists() else "[yellow]Available[/yellow]"
-            else:
-                # All dependencies are local paths
-                status = "[green]Local[/green]"
+            status = _cache_status(cfg)
 
             # Mark latest revision
             is_latest = "✓" if revision == latest_revision else ""
@@ -296,13 +283,7 @@ def devices() -> None:
 @logger_catch
 def clean() -> None:
     """Clear the Habitat-Mapper model cache to free up space. Models will be re-downloaded as needed."""
-    model_dir = get_local_model_dir()
-
-    # Also find old habitat-mapper files
-    kom_model_dir = Path(platformdirs.user_cache_dir(appname="kelp_o_matic", appauthor="hakai")) / "models"
-
-    # 1. Gather files using the idiomatic list comprehension
-    files = [f for f in itertools.chain(model_dir.rglob("*"), kom_model_dir.glob("*")) if f.is_file()]
+    files = model_cache.files()
 
     if not files:
         panel = Panel(
@@ -313,8 +294,6 @@ def clean() -> None:
         console.print(panel)
         return
 
-    # 2. Sort by size (descending) so user sees largest files first
-    files.sort(key=lambda f: f.stat().st_size, reverse=True)
     total_size = sum(f.stat().st_size for f in files)
 
     # 3. Build a nice table to show the user
@@ -359,11 +338,8 @@ def clean() -> None:
         return
 
     with console.status("[bold red]Deleting files...[/bold red]"):
-        for file in files:
-            try:
-                file.unlink()
-            except OSError as e:
-                logger.warning(f"Could not delete {file}: {e}")
+        for file, error in model_cache.clear():
+            logger.warning(f"Could not delete {file}: {error}")
 
     panel = Panel(
         f"[green]✓ Cleared model cache.\nFreed {humanize.naturalsize(total_size)}[/green]",

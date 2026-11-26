@@ -2,6 +2,7 @@
 
 from importlib.metadata import version
 
+from habitat_mapper.cache import ModelCache, model_cache
 from habitat_mapper.config import ModelConfig, SegmentOptions
 from habitat_mapper.main import clean, models, revisions, segment
 from habitat_mapper.model import ONNXModel
@@ -10,6 +11,7 @@ from habitat_mapper.progress import NullProgressReporter, ProgressReporter, Rich
 from habitat_mapper.registry import model_registry
 
 __all__ = [
+    "ModelCache",
     "ModelConfig",
     "NullProgressReporter",
     "ONNXModel",
@@ -19,6 +21,7 @@ __all__ = [
     "RichProgressReporter",
     "SegmentOptions",
     "clean",
+    "model_cache",
     "model_registry",
     "models",
     "revisions",

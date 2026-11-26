@@ -11,6 +11,7 @@ from loguru import logger
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidProtobuf
 
 from habitat_mapper.accelerators import create_session, describe_provider
+from habitat_mapper.cache import ModelCache, model_cache
 from habitat_mapper.config import ModelConfig, SegmentOptions
 from habitat_mapper.processing import ImageProcessor
 from habitat_mapper.progress import NullProgressReporter, RichProgressReporter
@@ -111,16 +112,18 @@ class ONNXModel:
     from `model_registry`, which makes a new one for every lookup.
     """
 
-    def __init__(self, config: ModelConfig, device: Device | None = None) -> None:
+    def __init__(self, config: ModelConfig, device: Device | None = None, cache: ModelCache | None = None) -> None:
         """Create a new ONNXModel instance.
 
         Args:
             config: Configuration for the model.
             device: Hardware to run on: "auto", "cpu", "cuda", "coreml", or "webgpu". Defaults to the HAB_DEVICE
                 environment variable, or "auto".
+            cache: Where the model's files are downloaded to. Defaults to `habitat_mapper.model_cache`.
         """
         self.cfg = config
         self.device = device
+        self.cache = cache or model_cache
         self._session: FallbackSession | None = None
         self._session_device: Device | None = None
 
@@ -159,7 +162,7 @@ class ONNXModel:
     def session(self) -> FallbackSession:
         """The ONNX Runtime session for the model's device, loaded (and downloaded) the first time it is needed."""
         if self._session is None or self._session_device != self.device:
-            self._session = FallbackSession(self.cfg.get_local_model_path(quiet=True), self.device)
+            self._session = FallbackSession(self.cache.fetch(self.cfg), self.device)
             self._session_device = self.device
         return self._session
 
@@ -327,8 +330,8 @@ class ONNXModel:
             quiet: If True, suppress progress bars during downloads and processing; log messages are not affected.
             device: Hardware to run the model on: "auto", "cpu", "cuda", "coreml", or "webgpu". Defaults to the
                 device the model was made with, then the HAB_DEVICE environment variable, then "auto".
-            progress: Makes the progress reporter for each stage, e.g. to show progress in your own app. Defaults to
-                progress bars in the terminal, or none if quiet.
+            progress: Makes the progress reporter for each stage, including downloading the model the first time, e.g.
+                to show progress in your own app. Defaults to progress bars in the terminal, or none if quiet.
             cancel: Called before each batch of tiles. If it returns True, processing stops, the partial output is
                 deleted, and ProcessingCancelled is raised.
             observer: Told about each batch and each part of the result as it is written, e.g. to preview it.
@@ -343,12 +346,16 @@ class ONNXModel:
         )
         if options.device is not None:
             self.device = options.device
-        # Download the model first, so that its progress follows the quiet option
-        self.cfg.get_local_model_path(quiet=quiet)
+        # Download the model first, so that its progress is shown like the rest
+        self.cache.fetch(self.cfg, progress or (NullProgressReporter if quiet else _download_bars))
         if progress is None:
             progress = NullProgressReporter if quiet else RichProgressReporter
         processor = ImageProcessor.from_model(self, options, progress=progress)
         processor.run(img_path, output_path, cancel=cancel, observer=observer)
+
+
+def _download_bars() -> RichProgressReporter:
+    return RichProgressReporter(transfer=True)
 
 
 class LegacyKelpRGBModel(ONNXModel):

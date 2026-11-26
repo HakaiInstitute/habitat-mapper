@@ -54,13 +54,14 @@ from PySide6.QtWidgets import (
 
 from habitat_mapper import __version__
 from habitat_mapper.accelerators import select_accelerators
+from habitat_mapper.cache import model_cache
 from habitat_mapper.config import SegmentOptions
 from habitat_mapper.gui import theme
 from habitat_mapper.gui.batch import BatchItem, Status, existing_outputs, output_path_for, output_stem
 from habitat_mapper.gui.canvas import PreviewCanvas
 from habitat_mapper.gui.diagnostics import LOG_DIR, add_log_file, diagnostics_report
 from habitat_mapper.gui.model_info import accepted_inputs, default_band_order, input_description, reads_safe
-from habitat_mapper.gui.models_dialog import ModelsDialog, is_downloaded
+from habitat_mapper.gui.models_dialog import ModelsDialog
 from habitat_mapper.gui.preview import (
     DEFAULT_PALETTE,
     LiveOverlay,
@@ -892,7 +893,7 @@ class MainWindow(QMainWindow):
         cfg = self._current_cfg()
         self._model_description.setText(cfg.description or "")
         self._model_input.setText(f"Reads: {input_description(cfg)}")
-        if is_downloaded(cfg):
+        if model_cache.is_cached(cfg):
             self._model_download.setText("Downloaded")
             self._model_download.setToolTip("This model can run without an internet connection.")
         else:
@@ -1007,7 +1008,7 @@ class MainWindow(QMainWindow):
         if not jobs:
             return
 
-        if not is_downloaded(model.cfg):
+        if not model_cache.is_cached(model.cfg):
             logger.info(f"Downloading {name}. This only happens the first time it's used.")
 
         self._run_total, self._run_started, self._run_output_dir = len(jobs), 0, output_dir
@@ -1040,7 +1041,8 @@ class MainWindow(QMainWindow):
         self._tray.set_status(f"Image {self._run_started} of {self._run_total}", running=True)
 
     def _show_progress(self, done: int, total: int) -> None:
-        self._progress.setRange(0, max(total, 1))
+        # A total of 0 is unknown, e.g. a download without a size, so show a busy bar
+        self._progress.setRange(0, total)
         self._progress.setValue(done)
         fraction = done / total if total else 0.0
         if self._live_row is not None and (cell := self._queue.item(self._live_row, 1)) is not None:

@@ -19,6 +19,17 @@ This installs the `habitat_mapper` Python package and the `hab` command line too
 Model weights are not bundled. Each model downloads to a local cache the first time you use it. To clear that
 cache, run `hab clean`.
 
+The cache is in your user cache folder:
+
+| System  | Model cache                                     |
+|---------|-------------------------------------------------|
+| Windows | `%LOCALAPPDATA%\hakai\habitat_mapper\Cache\models` |
+| macOS   | `~/Library/Caches/habitat_mapper/models`        |
+| Linux   | `~/.cache/habitat_mapper/models`                |
+
+Each file downloads to a temporary `.part` file and is only moved into the cache once it is complete, so an interrupted
+download is started again the next time instead of leaving a broken model behind.
+
 ## GPU acceleration
 
 A GPU is optional, and Habitat-Mapper runs on the CPU without one. GPU support for most graphics cards is

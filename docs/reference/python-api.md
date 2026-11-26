@@ -39,6 +39,12 @@ with a model name, or with a `(name, revision)` tuple: `model_registry["kelp-rgb
 
 ::: habitat_mapper.ProcessingCancelled
 
+## Model cache
+
+`habitat_mapper.model_cache` is the shared `ModelCache` that models download their files to.
+
+::: habitat_mapper.cache.ModelCache
+
 ## Progress reporting
 
 ::: habitat_mapper.ProgressReporter

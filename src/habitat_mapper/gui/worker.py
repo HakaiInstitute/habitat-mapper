@@ -124,7 +124,8 @@ class SegmentWorker(QObject):
     def _run(self) -> None:
         self.stage.emit(f"Loading {self._model.name}, which is downloaded the first time it is used…")
         try:
-            self._model.cfg.get_local_model_path(quiet=True)
+            # Shows download progress the first time, through the same progress bar as segmenting
+            self._model.cache.fetch(self._model.cfg, lambda: _QtProgressReporter(self.progress))
         except Exception as e:  # noqa: BLE001
             logger.error(f"Could not load {self._model.name}: {e}")
             for row, _, _ in self._jobs:

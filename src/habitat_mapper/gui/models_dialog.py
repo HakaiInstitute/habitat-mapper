@@ -22,26 +22,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from habitat_mapper.cache import model_cache
 from habitat_mapper.gui.worker import run_in_background
 from habitat_mapper.registry import model_registry
-from habitat_mapper.utils import get_local_model_dir, is_url
 
 if TYPE_CHECKING:
-    from habitat_mapper.config import ModelConfig
+    from pathlib import Path
 
 
-def is_downloaded(cfg: ModelConfig) -> bool:
-    """Check whether a model's files are in the local cache.
-
-    Args:
-        cfg: The model's configuration.
-
-    Returns:
-        True if the model can run without downloading anything.
-    """
-    if not any(is_url(dep) for dep in cfg.dependencies):
-        return True
-    return (get_local_model_dir(cfg.name, cfg.revision) / cfg.model_filename).exists()
+def _existing(folder: Path) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
 
 
 class ModelsDialog(QDialog):
@@ -63,7 +54,9 @@ class ModelsDialog(QDialog):
         self._download = QPushButton("Download selected")
         self._download.clicked.connect(self._download_selected)
         open_folder = QPushButton("Open model folder")
-        open_folder.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(get_local_model_dir()))))
+        open_folder.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(_existing(model_cache.root))))
+        )
         self._progress = QProgressBar()
         self._progress.setRange(0, 0)
         self._progress.hide()
@@ -91,7 +84,7 @@ class ModelsDialog(QDialog):
             for column, text in enumerate([
                 label,
                 cfg.description or "",
-                "Downloaded" if is_downloaded(cfg) else "Not downloaded",
+                "Downloaded" if model_cache.is_cached(cfg) else "Not downloaded",
             ]):
                 item = QTableWidgetItem(text)
                 item.setData(Qt.ItemDataRole.UserRole, name)
@@ -107,7 +100,7 @@ class ModelsDialog(QDialog):
 
         def download() -> None:
             for name in names:
-                model_registry[name].cfg.get_local_model_path(quiet=True)
+                model_cache.fetch(model_registry[name].cfg)
 
         self._download.setEnabled(False)
         self._progress.show()
