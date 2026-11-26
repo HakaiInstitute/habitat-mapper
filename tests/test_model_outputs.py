@@ -44,7 +44,9 @@ def test_postprocess_picks_the_highest_scoring_class(activation: str | None) -> 
     scores = np.random.default_rng(0).normal(scale=50, size=(4, 5, 7)).astype(np.float32)
     expected = np.argmax(scores, axis=0)
 
-    np.testing.assert_array_equal(model.postprocess(scores), expected)
+    labels = model.postprocess(scores)
+    np.testing.assert_array_equal(labels, expected)
+    assert labels.dtype == np.uint8
     np.testing.assert_array_equal(model.postprocess(np.stack([scores, scores])), [expected, expected])
 
 
@@ -54,41 +56,45 @@ def test_postprocess_of_one_score_is_presence(activation: str | None, threshold:
     model = ONNXModel(_config(activation=activation))
     scores = np.array([[[-3.0, threshold - 0.01, threshold + 0.01, 3.0]]], dtype=np.float32)
 
-    np.testing.assert_array_equal(model.postprocess(scores), [[0, 0, 1, 1]])
+    labels = model.postprocess(scores)
+    np.testing.assert_array_equal(labels, [[0, 0, 1, 1]])
+    assert labels.dtype == np.uint8
 
 
 def test_legacy_rgb_model_labels() -> None:
     # Channel 0 is presence (a logit), channels 1-2 score macrocystis and nereocystis
     scores = np.array(
         [
-            [[-2.0, -2.0, 2.0, 2.0]],
-            [[5.0, -5.0, 5.0, -5.0]],
-            [[-5.0, 5.0, -5.0, 5.0]],
+            [[-2.0, -2.0], [2.0, 2.0], [2.0, -2.0]],
+            [[5.0, -5.0], [5.0, -5.0], [-5.0, 5.0]],
+            [[-5.0, 5.0], [-5.0, 5.0], [5.0, -5.0]],
         ],
         dtype=np.float32,
     )
 
     labels = LegacyKelpRGBModel(_config()).postprocess(scores)
 
-    # 0 background, 1 macrocystis, 2 nereocystis
-    np.testing.assert_array_equal(labels, [[0, 0, 1, 2]])
+    # 0 background, 1 macrocystis, 2 nereocystis. 3 rows, unlike the channels, so a mix-up of axes shows
+    np.testing.assert_array_equal(labels, [[0, 0], [1, 2], [2, 0]])
+    assert labels.dtype == np.uint8
 
 
 def test_legacy_rgbi_model_labels() -> None:
     # Channels 0-1 score background and kelp, channels 2-3 score macrocystis and nereocystis
     scores = np.array(
         [
-            [[3.0, 3.0, -3.0, -3.0]],
-            [[-3.0, -3.0, 3.0, 3.0]],
-            [[5.0, -5.0, 5.0, -5.0]],
-            [[-5.0, 5.0, -5.0, 5.0]],
+            [[3.0, 3.0], [-3.0, -3.0], [-3.0, 3.0]],
+            [[-3.0, -3.0], [3.0, 3.0], [3.0, -3.0]],
+            [[5.0, -5.0], [5.0, -5.0], [-5.0, 5.0]],
+            [[-5.0, 5.0], [-5.0, 5.0], [5.0, -5.0]],
         ],
         dtype=np.float32,
     )
 
     labels = LegacyKelpRGBIModel(_config()).postprocess(scores)
 
-    np.testing.assert_array_equal(labels, [[0, 0, 1, 2]])
+    np.testing.assert_array_equal(labels, [[0, 0], [1, 2], [2, 0]])
+    assert labels.dtype == np.uint8
 
 
 def _model_with_input_shape(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shape: list[Any]) -> ONNXModel:
