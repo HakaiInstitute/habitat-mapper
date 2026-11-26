@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 from pydantic import ValidationError
 
@@ -71,3 +72,16 @@ def test_configured_max_pixel_value_is_kept() -> None:
 def test_unsupported_data_type_raises() -> None:
     with pytest.raises(ValueError, match="Unsupported image data type int32"):
         _config().max_pixel_value_for("int32")
+
+
+@pytest.mark.parametrize("config_file", CONFIG_FILES, ids=[f.name for f in CONFIG_FILES])
+def test_config_can_preprocess_its_input(config_file: Path) -> None:
+    # Runs the model's preprocessing on a tile, so a config with stats for the wrong number of bands or a normalization
+    # that isn't implemented fails here rather than partway through someone's image
+    config = ModelConfig.model_validate_json(config_file.read_text())
+    tile = np.ones((1, config.input_channels, 4, 4), dtype=np.uint16)
+
+    out = ONNXModel(config).preprocess(tile, config.max_pixel_value_for("uint16"))
+
+    assert out.shape == tile.shape
+    assert np.all(np.isfinite(out))

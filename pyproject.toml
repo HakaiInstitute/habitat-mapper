@@ -53,6 +53,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "diff-cover>=11.0.4",
     "mutmut>=3.8.1",
+    "onnx>=1.23.2",
 ]
 docs = [
     "mkdocstrings-python>=1.19.0",
