@@ -52,6 +52,13 @@ class ProcessingObserver(Protocol):
         """
         ...
 
+    def segmenting(self, windows: Sequence[Window]) -> None:
+        """Called before the model segments a batch, with its tiles that aren't blank.
+
+        Blank tiles, e.g. background past the edge of an orthomosaic, aren't sent to the model.
+        """
+        ...
+
     def written(self, window: Window, data: np.ndarray) -> None:
         """Called with each part of the result as it is written, then again as the filters rewrite it, if on."""
         ...
@@ -249,6 +256,8 @@ class ImageProcessor:
 
                     # Tiles of one flat value have nothing to segment, so they aren't sent to the model
                     blank = np.array([np.all(img == img.flat[0]) for img in input_batch], dtype=bool)
+                    if observer is not None:
+                        observer.segmenting([w for w, b in zip(window_batch, blank, strict=True) if not b])
                     predictions = iter(
                         self.model.predict(input_batch[~blank], max_pixel_value) if not blank.all() else ()
                     )

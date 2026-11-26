@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -119,3 +119,21 @@ def test_live_preview_ends_as_the_saved_result(model: ONNXModel, tmp_path: Path,
     overlay = recorded.overlays[0].rgba
     assert not np.all(overlay == PENDING_RGBA, axis=-1).any()
     np.testing.assert_array_equal(overlay, read_output_preview(job.output_path, palette=class_palette()))
+
+
+def test_live_preview_doesnt_haze_background(model: ONNXModel, tmp_path: Path) -> None:
+    # Only the left quarter has anything to segment. Tiles there reach column 48 at most
+    image = np.zeros((3, 64, 128), dtype=np.uint8)
+    image[:, :, :32] = np.random.default_rng(0).integers(1, 255, size=(3, 64, 32))
+    job = Job(0, write_raster(tmp_path / "in.tif", image), tmp_path / "out.tif")
+    recorded = Recorder()
+    snapshots: list[np.ndarray] = []
+    events = replace(
+        recorded.events(), tiles_started=lambda row, _: snapshots.append(recorded.overlays[row].rgba.copy())
+    )
+
+    run_jobs(model, [job], _options(), events, cancelled=lambda: False)
+
+    hazed = np.array([np.all(s == PENDING_RGBA, axis=-1) for s in snapshots])
+    assert hazed[:, :, :32].any()
+    assert not hazed[:, :, 48:].any()

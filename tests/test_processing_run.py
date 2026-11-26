@@ -85,6 +85,9 @@ def test_observer_sees_every_batch_and_the_whole_result(tmp_path: Path) -> None:
     assert observer.size == (CROP_SIZE * 2, CROP_SIZE * 3)
     assert observer.batches
     assert all(w.width == w.height == CROP_SIZE for b in observer.batches for w in b)
+    # Only the tiles in the left column are wholly blank
+    assert observer.segmented == [[w for w in b if w.col_off != 0] for b in observer.batches]
+    assert observer.segmented != observer.batches
     with rasterio.open(out_path) as src:
         np.testing.assert_array_equal(observer.result, src.read(1))
 
