@@ -32,8 +32,7 @@ from habitat_mapper.gui.preview import (
 )
 from habitat_mapper.gui.updates import Release, newer_release
 from habitat_mapper.registry import model_registry
-from tests.test_blank_tile_skipping import _write_raster
-from tests.test_safe_reader import _make_safe, _zip
+from tests.helpers import make_safe, write_raster, zip_folder
 
 
 def test_output_path_for_file_and_safe_folder() -> None:
@@ -64,7 +63,7 @@ def test_existing_outputs(tmp_path: Path) -> None:
 def test_input_preview_is_downsampled_rgb(tmp_path: Path) -> None:
     rng = np.random.default_rng(0)
     path = tmp_path / "input.tif"
-    _write_raster(path, rng.integers(0, 4000, size=(4, 300, 600)).astype(np.uint16))
+    write_raster(path, rng.integers(0, 4000, size=(4, 300, 600)).astype(np.uint16))
 
     preview = read_input_preview(path, max_size=100, band_order=[3, 2, 1, 4])
 
@@ -76,7 +75,7 @@ def test_input_preview_is_downsampled_rgb(tmp_path: Path) -> None:
 def test_output_preview_hides_background_and_nodata(tmp_path: Path) -> None:
     classes = np.array([[[0, 1, 2, 255]]], dtype=np.uint8)
     path = tmp_path / "output.tif"
-    _write_raster(path, classes)
+    write_raster(path, classes)
     with rasterio.open(path, "r+") as dst:
         dst.nodata = 255
 
@@ -219,7 +218,7 @@ def test_accepted_inputs(tmp_path: Path) -> None:
     tiff = tmp_path / "b.TIFF"
     other = tmp_path / "c.jpg"
     safe = tmp_path / "S2B_X.SAFE"
-    safe_zip = _zip(_make_safe(tmp_path / "src"), tmp_path / "S2B_Y.SAFE.ZIP", "S2B_Y.SAFE/")
+    safe_zip = zip_folder(make_safe(tmp_path / "src"), tmp_path / "S2B_Y.SAFE.ZIP", "S2B_Y.SAFE/")
     other_zip = tmp_path / "tiffs.zip"
     damaged_zip = tmp_path / "S2B_Z.SAFE.zip"
     for path in (tif, tiff, other):
@@ -242,8 +241,8 @@ def test_safe_folder_and_its_zip_share_an_output_stem() -> None:
 
 
 def test_input_preview_of_safe_zip(tmp_path: Path) -> None:
-    safe = _make_safe(tmp_path)
-    zipped = _zip(safe, tmp_path / "S2B_MSIL2A_X.SAFE.zip", "S2B_MSIL2A_X.SAFE/")
+    safe = make_safe(tmp_path)
+    zipped = zip_folder(safe, tmp_path / "S2B_MSIL2A_X.SAFE.zip", "S2B_MSIL2A_X.SAFE/")
 
     preview = read_input_preview(zipped, max_size=10)
 

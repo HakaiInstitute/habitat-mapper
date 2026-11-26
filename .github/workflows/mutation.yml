@@ -1,0 +1,52 @@
+name: 🧬 Mutation
+# Changes the core modules in small ways (see [tool.mutmut] in pyproject.toml) and checks that some test fails each
+# time. Each mutant that survives is a behaviour no test pins down. Too slow to run on every PR
+on:
+  schedule:
+    - cron: "0 9 * * 1"  # Mondays
+  workflow_dispatch:
+
+jobs:
+  Mutation:
+    name: mutation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          version: "0.13.6"
+          enable-cache: false  # Scheduled runs shouldn't write a cache that PR jobs then trust
+
+      - name: "Set up Python"
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run mutation tests
+        run: uv run mutmut run
+
+      - name: Summarize surviving mutants
+        if: always()
+        run: |
+          {
+            echo "## Mutation results"
+            echo '```'
+            uv run mutmut results --all true | awk -F': ' '{print $2}' | sort | uniq -c
+            echo '```'
+            echo "### Survived and untested"
+            echo '```'
+            uv run mutmut results
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

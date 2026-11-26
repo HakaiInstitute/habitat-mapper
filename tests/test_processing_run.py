@@ -11,19 +11,18 @@ import rasterio
 from habitat_mapper.config import ProcessingConfig, SegmentOptions
 from habitat_mapper.processing import ImageProcessor, ProcessingCancelled
 from habitat_mapper.progress import NullProgressReporter
-from tests.test_blank_tile_skipping import CROP_SIZE, _make_stub_model, _write_raster
+from tests.helpers import RecordingObserver, make_stub_model, write_raster
+
+CROP_SIZE = 32
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from pathlib import Path
     from unittest.mock import MagicMock
-
-    from rasterio.windows import Window
 
 
 def _processor(model: MagicMock | None = None) -> ImageProcessor:
     return ImageProcessor(
-        model=model or _make_stub_model([]),
+        model=model or make_stub_model([]),
         config=ProcessingConfig(crop_size=CROP_SIZE, batch_size=1, blur_kernel_size=0, band_order=[1, 2, 3]),
         progress=NullProgressReporter,
     )
@@ -31,12 +30,12 @@ def _processor(model: MagicMock | None = None) -> ImageProcessor:
 
 def _random_image(path: Path, dtype: type) -> Path:
     rng = np.random.default_rng(0)
-    _write_raster(path, rng.integers(1, 255, size=(3, CROP_SIZE * 2, CROP_SIZE * 2)).astype(dtype))
+    write_raster(path, rng.integers(1, 255, size=(3, CROP_SIZE * 2, CROP_SIZE * 2)).astype(dtype))
     return path
 
 
 def test_cancel_stops_and_deletes_output(tmp_path: Path) -> None:
-    model = _make_stub_model([])
+    model = make_stub_model([])
     processor = _processor(model)
     out_path = tmp_path / "output.tif"
     calls = 0
@@ -54,7 +53,7 @@ def test_cancel_stops_and_deletes_output(tmp_path: Path) -> None:
 
 
 def test_auto_max_pixel_value_is_detected_per_image(tmp_path: Path) -> None:
-    model = _make_stub_model([])
+    model = make_stub_model([])
     processor = _processor(model)
     assert model.cfg.max_pixel_value == "auto"
 
@@ -73,32 +72,13 @@ def test_unsupported_dtype_raises(tmp_path: Path) -> None:
         _processor().run(_random_image(tmp_path / "input.tif", np.int32), tmp_path / "output.tif")
 
 
-class _RecordingObserver:
-    def __init__(self) -> None:
-        self.size: tuple[int, int] | None = None
-        self.batches: list[list[Window]] = []
-        self.result: np.ndarray | None = None
-
-    def image_started(self, height: int, width: int) -> None:
-        self.size = (height, width)
-        self.result = np.full((height, width), 99, dtype=np.uint8)
-
-    def batch_started(self, windows: Sequence[Window]) -> None:
-        self.batches.append(list(windows))
-
-    def written(self, window: Window, data: np.ndarray) -> None:
-        assert self.result is not None
-        rows, cols = window.toslices()
-        self.result[rows, cols] = data
-
-
 def test_observer_sees_every_batch_and_the_whole_result(tmp_path: Path) -> None:
-    observer = _RecordingObserver()
+    observer = RecordingObserver()
     out_path = tmp_path / "output.tif"
     # Blank on the left, so that the shortcut for blank tiles is covered too
     data = np.zeros((3, CROP_SIZE * 2, CROP_SIZE * 3), dtype=np.uint8)
     data[:, :, CROP_SIZE:] = np.random.default_rng(0).integers(1, 255, size=(3, CROP_SIZE * 2, CROP_SIZE * 2))
-    _write_raster(tmp_path / "input.tif", data)
+    write_raster(tmp_path / "input.tif", data)
 
     _processor().run(tmp_path / "input.tif", out_path, observer=observer)
 
@@ -112,11 +92,11 @@ def test_observer_sees_every_batch_and_the_whole_result(tmp_path: Path) -> None:
 @pytest.mark.parametrize("band_order", [[1, 2], [1, 2, 3, 4]])
 def test_band_order_needs_one_band_per_model_input(band_order: list[int]) -> None:
     with pytest.raises(ValueError, match="takes 3 bands"):
-        ImageProcessor.from_model(_make_stub_model([]), SegmentOptions(crop_size=CROP_SIZE, band_order=band_order))
+        ImageProcessor.from_model(make_stub_model([]), SegmentOptions(crop_size=CROP_SIZE, band_order=band_order))
 
 
 def test_band_order_can_pick_from_more_bands_than_the_model_takes() -> None:
-    model = _make_stub_model([])
+    model = make_stub_model([])
     model.input_size = None
     processor = ImageProcessor.from_model(model, SegmentOptions(crop_size=CROP_SIZE, band_order=[6, 4, 2]))
     assert processor.config.band_order == [6, 4, 2]
@@ -124,7 +104,7 @@ def test_band_order_can_pick_from_more_bands_than_the_model_takes() -> None:
 
 def test_observer_sees_the_filtered_result(tmp_path: Path) -> None:
     rng = np.random.default_rng(0)
-    model = _make_stub_model([])
+    model = make_stub_model([])
     # Noisy predictions, so that the filters change the result
     model.predict.side_effect = lambda batch, _: rng.random((batch.shape[0], 2, *batch.shape[2:]), dtype=np.float32)
     processor = ImageProcessor(
@@ -132,7 +112,7 @@ def test_observer_sees_the_filtered_result(tmp_path: Path) -> None:
         config=ProcessingConfig(crop_size=CROP_SIZE, blur_kernel_size=5, morph_kernel_size=3, band_order=[1, 2, 3]),
         progress=NullProgressReporter,
     )
-    observer = _RecordingObserver()
+    observer = RecordingObserver()
     out_path = tmp_path / "output.tif"
 
     processor.run(_random_image(tmp_path / "input.tif", np.uint8), out_path, observer=observer)

@@ -53,6 +53,44 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
+  Coverage:
+    # Total coverage must not fall below fail_under in pyproject.toml, and a PR's changed lines must be tested
+    name: coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-coverage
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # diff-cover needs the base branch history
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          version: "0.13.6"
+          enable-cache: true
+
+      - name: "Set up Python"
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run tests with coverage
+        run: uv run pytest --cov --cov-report=term --cov-report=xml
+
+      - name: Check coverage of changed lines
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: uv run diff-cover coverage.xml --compare-branch="origin/$BASE_REF" --fail-under=80
+
   Oldest-ONNX-Runtime:
     # pyproject.toml allows these minimum versions, so the code must keep working on them as newer ones come out
     name: test oldest ONNX Runtime

@@ -7,16 +7,15 @@ one blank tile either raised an IndexError or dropped non-blank tiles from predi
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 import rasterio
-from rasterio.transform import from_origin
 
-from habitat_mapper.config import ModelConfig, ProcessingConfig
+from habitat_mapper.config import ProcessingConfig
 from habitat_mapper.processing import ImageProcessor
 from habitat_mapper.progress import NullProgressReporter
+from tests.helpers import make_stub_model, write_raster
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -24,48 +23,6 @@ if TYPE_CHECKING:
 CROP_SIZE = 32
 DEFAULT_OUTPUT_VALUE = 7
 PREDICTED_CLASS = 1
-
-
-def _make_stub_model(predicted_tiles: list[np.ndarray]) -> MagicMock:
-    """Model stub that predicts PREDICTED_CLASS everywhere and records every tile it receives.
-
-    Returns:
-        A mock model whose predictions are appended to ``predicted_tiles``.
-    """
-
-    def _predict(batch: np.ndarray, max_pixel_value: float) -> np.ndarray:
-        predicted_tiles.extend(batch)
-        logits = np.zeros((batch.shape[0], 2, batch.shape[2], batch.shape[3]), dtype=np.float32)
-        logits[:, PREDICTED_CLASS] = 1.0
-        return logits
-
-    model = MagicMock()
-    model.cfg = ModelConfig(
-        name="stub",
-        revision="20250101",
-        dependencies=[],
-        model_filename="model.onnx",
-        default_output_value=DEFAULT_OUTPUT_VALUE,
-        nodata_value=255,
-    )
-    model.predict.side_effect = _predict
-    model.postprocess.side_effect = lambda data: np.argmax(data, axis=0).astype(np.uint8)
-    return model
-
-
-def _write_raster(path: Path, data: np.ndarray) -> None:
-    with rasterio.open(
-        path,
-        "w",
-        driver="GTiff",
-        height=data.shape[1],
-        width=data.shape[2],
-        count=data.shape[0],
-        dtype=data.dtype,
-        crs="EPSG:32609",
-        transform=from_origin(500000, 5500000, 1, 1),
-    ) as dst:
-        dst.write(data)
 
 
 @pytest.mark.parametrize("batch_size", [1, 2, 3, 4, 8])
@@ -80,11 +37,13 @@ def test_batches_with_multiple_blank_tiles(tmp_path: Path, batch_size: int) -> N
 
     img_path = tmp_path / "input.tif"
     out_path = tmp_path / "output.tif"
-    _write_raster(img_path, data)
+    write_raster(img_path, data)
 
     predicted_tiles: list[np.ndarray] = []
     processor = ImageProcessor(
-        model=_make_stub_model(predicted_tiles),
+        model=make_stub_model(
+            predicted_tiles, predicted_class=PREDICTED_CLASS, default_output_value=DEFAULT_OUTPUT_VALUE
+        ),
         config=ProcessingConfig(crop_size=CROP_SIZE, batch_size=batch_size, blur_kernel_size=0, band_order=[1, 2, 3]),
         progress=NullProgressReporter,
     )
