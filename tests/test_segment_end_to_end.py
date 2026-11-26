@@ -5,15 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-import onnx
 import pytest
 import rasterio
-from onnx import TensorProto, helper, numpy_helper
 
 from habitat_mapper import main
-from habitat_mapper.config import ModelConfig
 from habitat_mapper.registry import ModelRegistry
-from tests.helpers import CRS, write_raster
+from tests.helpers import CRS, tiny_model_config, write_raster, write_tiny_model
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -21,48 +18,10 @@ if TYPE_CHECKING:
 MODEL_NAME = "tiny"
 
 
-@pytest.fixture(scope="module")
-def tiny_model(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """A 1x1 convolution that scores class 1 where the first band is brighter than the second, else class 0.
-
-    Its height and width are left unnamed, which ONNX Runtime reports as None.
-
-    Returns:
-        The model's path.
-    """
-    # Class 0 scores band 2 - band 1, class 1 scores band 1 - band 2
-    weights = numpy_helper.from_array(np.array([[-1, 1, 0], [1, -1, 0]], dtype=np.float32).reshape(2, 3, 1, 1), "w")
-    graph = helper.make_graph(
-        [helper.make_node("Conv", ["input", "w"], ["output"])],
-        "tiny",
-        [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", 3, None, None])],
-        [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", 2, None, None])],
-        initializer=[weights],
-    )
-    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-    model.ir_version = 9
-    onnx.checker.check_model(model)
-    path = tmp_path_factory.mktemp("model") / "tiny.onnx"
-    onnx.save(model, path)
-    return path
-
-
 @pytest.fixture
-def registry(monkeypatch: pytest.MonkeyPatch, tiny_model: Path) -> ModelRegistry:
+def registry(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> ModelRegistry:
     registry = ModelRegistry()
-    registry.register_model(
-        ModelConfig(
-            name=MODEL_NAME,
-            revision="20250101",
-            dependencies=[str(tiny_model)],
-            model_filename=tiny_model.name,
-            # The same for every band, so normalizing keeps whichever band is brighter
-            mean=(0.5, 0.5, 0.5),
-            std=(0.25, 0.25, 0.25),
-            default_output_value=0,
-            nodata_value=255,
-        )
-    )
+    registry.register_model(tiny_model_config(write_tiny_model(tmp_path / "model" / "tiny.onnx"), MODEL_NAME))
     monkeypatch.setattr(main, "model_registry", registry)
     return registry
 
