@@ -34,3 +34,13 @@ hab segment kelp-rgb input.tif output.tif
 ```
 
 Run `hab models` to see the model names, or browse the [model overview](../models/index.md).
+
+The old `hab find-kelp` and `hab find-mussels` commands were removed in version 0.18. Use these instead:
+
+| Old command                         | New command                                |
+|-------------------------------------|--------------------------------------------|
+| `hab find-kelp --rgb IN OUT`        | `hab segment kelp-rgb IN OUT`              |
+| `hab find-kelp --rgbi IN OUT`       | `hab segment kelp-rgbi IN OUT`             |
+| `hab find-mussels IN OUT`           | `hab segment mussel-rgb IN OUT`            |
+
+Their `--gpu` and `--tta` flags have no replacement: `hab segment` picks the hardware itself (see `--device`).

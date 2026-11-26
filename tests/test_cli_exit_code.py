@@ -5,6 +5,10 @@ from __future__ import annotations
 import os
 import subprocess  # noqa: S404
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _SCRIPT = """
 import habitat_mapper.main as main
@@ -37,3 +41,21 @@ def test_failed_command_called_from_python_returns() -> None:
     result = _run(from_cli=False)
     assert result.returncode == 0
     assert "returned-marker" in result.stdout
+
+
+def test_unknown_revision_exits_with_an_error_code(tmp_path: Path) -> None:
+    image = tmp_path / "input.tif"
+    image.write_bytes(b"")
+    env = {k: v for k, v in os.environ.items() if k != "DEBUG"} | {"COLUMNS": "500"}
+    args = ["segment", "-m", "kelp-rgb", "-i", str(image), "-o", str(tmp_path / "out.tif"), "--rev", "19990101"]
+    script = f"import sys; sys.argv = ['hab', *{args!r}]; from habitat_mapper.main import main; main()"
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1
+    assert "Revision 19990101 was not found" in result.stdout + result.stderr
+    assert not (tmp_path / "out.tif").exists()

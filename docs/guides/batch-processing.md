@@ -3,6 +3,9 @@
 `hab segment` processes one image per run. To process a folder, loop over the files. Use `--quiet` (`-q`) to turn
 off the per-file progress bars. Errors are still shown, and a failed image still stops with an error.
 
+`hab` exits with code 1 when a run fails, including when the model or `--revision` doesn't exist, so a script can
+check `$?` (or `$LASTEXITCODE` in PowerShell) to stop or retry.
+
 ## From the terminal
 
 === "Windows (PowerShell)"

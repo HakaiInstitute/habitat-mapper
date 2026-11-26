@@ -9,7 +9,6 @@ license = "MIT"
 dependencies = [
     "cyclopts>=4.23.0",
     "defusedxml>=0.7.1",
-    "deprecation>=2.1.0",
     "humanize>=4.12.3",
     "loguru>=0.7.3",
     "numpy>=2.2.6",

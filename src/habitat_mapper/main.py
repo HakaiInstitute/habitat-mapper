@@ -10,11 +10,10 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated
 
-import deprecation
 import humanize
 import platformdirs
 from cyclopts import App, Parameter
-from cyclopts.types import ExistingFile, File, PositiveInt  # noqa: TC002
+from cyclopts.types import File, PositiveInt  # noqa: TC002
 from loguru import logger
 from rich import box
 from rich.console import Console
@@ -464,23 +463,29 @@ def segment(
         ),
     ] = False,
 ) -> None:
-    """Apply a segmentation model to an input raster and save the output."""
+    """Apply a segmentation model to an input raster and save the output.
+
+    Raises:
+        ValueError: If the model has no such revision.
+    """
     if quiet:
         logger.remove()
         logger.add(console.print, level="ERROR", format=_log_formatter, colorize=None)
 
     try:
         # Handle revision retrieval
-        try:
-            if revision == "latest":
-                model = model_registry[model_name]  # Gets latest revision
-                actual_revision = model_registry.get_latest_revision(model_name)
-            else:
-                model = model_registry[model_name, revision]  # Gets specific revision
-                actual_revision = revision
-        except KeyError:
-            logger.error(f"Revision {revision} was not found for model {model_name}")
-            return
+        if revision == "latest":
+            model = model_registry[model_name]  # Gets latest revision
+            actual_revision = model_registry.get_latest_revision(model_name)
+        elif (model_name, revision) in model_registry:
+            model = model_registry[model_name, revision]
+            actual_revision = revision
+        else:
+            # Raised rather than logged, so that `hab segment` exits with an error code scripts can detect
+            raise ValueError(
+                f"Revision {revision} was not found for model {model_name}. "
+                f"Run `hab revisions --model {model_name}` to see the options."
+            )
 
         if not quiet:
             # Show processing info in a panel
@@ -519,191 +524,6 @@ def segment(
         if quiet:
             logger.remove()
             logger.add(console.print, level=LOG_LEVEL, format=_log_formatter, colorize=None)
-
-
-@app.command(show=False)
-@deprecation.deprecated(
-    deprecated_in="0.14.0",
-    removed_in="0.15.0",
-    current_version=version("habitat_mapper"),
-    details="Please use the `hab segment` command instead.",
-)
-@logger_catch
-def find_kelp(
-    source: Annotated[
-        ExistingFile,
-        Parameter(
-            help="Input image with Byte data type.",
-            name=[],
-        ),
-    ],
-    dest: Annotated[
-        File,
-        Parameter(
-            help="File path location to save output to.",
-            name=[],
-        ),
-    ],
-    species: Annotated[
-        bool,
-        Parameter(
-            "--species",
-            negative="--presence",
-            help="Segment to species or presence/absence level.",
-        ),
-    ] = False,
-    crop_size: Annotated[
-        int,
-        Parameter(
-            validator=_positive_even_int_validator,
-            help="The data window size to run through the segmentation model.",
-        ),
-    ] = 1024,
-    use_nir: Annotated[
-        bool,
-        Parameter(
-            "--rgbi",
-            negative="--rgb",
-            help="Use RGB and NIR bands for classification. Assumes RGBI ordering.",
-        ),
-    ] = False,
-    band_order: Annotated[
-        list[int] | None,
-        Parameter(
-            help="GDAL-style band re-ordering flag. Defaults to RGB or RGBI order. "
-            "To e.g., reorder a BGRI image at runtime, pass flags `-b 3 -b 2 -b 1 -b 4`.",
-            validator=_band_validator,
-            name=["--band", "-b"],
-            negative="",
-        ),
-    ] = None,
-    use_gpu: Annotated[
-        bool,
-        Parameter("--gpu", negative="--no-gpu", help="Enable or disable GPU, if available."),
-    ] = True,
-    use_tta: Annotated[
-        bool,
-        Parameter(
-            "--tta",
-            negative="--no-tta",
-            help="Use test time augmentation to improve accuracy at the cost of processing time.",
-        ),
-    ] = False,
-) -> None:
-    """DEPRECATED: Use `segment` instead.
-
-    Detect kelp in image at path SOURCE and output the resulting classification raster to file at path DEST.
-    """
-    logger.warning("`hab find-kelp` is deprecated and will be removed in v0.15.0. Please use `hab segment` instead")
-
-    if not species:
-        logger.warning(
-            "Only species kelp detection is supported since version 0.14.0. Proceeding with kelp species detection."
-        )
-
-    if not use_gpu:
-        logger.warning("Since version 0.14.0, GPU and CPU usage is determined automatically and cannot be overridden.")
-
-    if use_tta:
-        logger.warning(
-            "Since version 0.14.0, test-time augmentation is no longer supported. Please open a GitHub issue at "
-            "https://github.com/HakaiInstitute/habitat-mapper if you would like to see test-time augmentation added "
-            "back into Habitat-Mapper"
-        )
-
-    segment(
-        model_name=("kelp-rgbi" if use_nir else "kelp-rgb"),
-        img_path=source,
-        output_path=dest,
-        revision="latest",
-        batch_size=1,
-        crop_size=crop_size,
-        blur_kernel_size=0,
-        morph_kernel_size=0,
-        band_order=band_order,
-    )
-
-
-@app.command(show=False)
-@deprecation.deprecated(
-    deprecated_in="0.14.0",
-    removed_in="0.15.0",
-    current_version=version("habitat_mapper"),
-    details="Please use the `hab segment` command instead.",
-)
-@logger_catch
-def find_mussels(
-    source: Annotated[
-        ExistingFile,
-        Parameter(
-            help="Input image with Byte data type.",
-            name=[],
-        ),
-    ],
-    dest: Annotated[
-        File,
-        Parameter(
-            help="File path location to save output to.",
-            name=[],
-        ),
-    ],
-    crop_size: Annotated[
-        int,
-        Parameter(
-            validator=_positive_even_int_validator,
-            help="The data window size to run through the segmentation model.",
-        ),
-    ] = 1024,
-    band_order: Annotated[
-        list[int] | None,
-        Parameter(
-            help="GDAL-style band re-ordering flag. Defaults to RGB or RGBI order. "
-            "To e.g., reorder a BGRI image at runtime, pass flags `-b 3 -b 2 -b 1 -b 4`.",
-            validator=_band_validator,
-            name=["--band", "-b"],
-            negative="",
-        ),
-    ] = None,
-    use_gpu: Annotated[
-        bool,
-        Parameter("--gpu", negative="--no-gpu", help="Enable or disable GPU, if available."),
-    ] = True,
-    use_tta: Annotated[
-        bool,
-        Parameter(
-            "--tta",
-            negative="--no-tta",
-            help="Use test time augmentation to improve accuracy at the cost of processing time.",
-        ),
-    ] = False,
-) -> None:
-    """DEPRECATED: Use `segment` instead.
-
-    Detect kelp in image at path SOURCE and output the resulting classification raster to file at path DEST.
-    """
-    logger.warning("`hab find-mussels` is deprecated and will be removed in v0.15.0. Please use `hab segment` instead")
-
-    if not use_gpu:
-        logger.warning("Since version 0.14.0, GPU and CPU usage is determined automatically and cannot be overridden.")
-
-    if use_tta:
-        logger.warning(
-            "Since version 0.14.0, test-time augmentation is no longer supported. Please open a GitHub issue at "
-            "https://github.com/HakaiInstitute/habitat-mapper if you would like to see test-time augmentation added "
-            "back into Habitat-Mapper"
-        )
-
-    segment(
-        model_name="mussel-rgb",
-        img_path=source,
-        output_path=dest,
-        revision="latest",
-        batch_size=1,
-        crop_size=crop_size,
-        blur_kernel_size=0,
-        morph_kernel_size=0,
-        band_order=band_order,
-    )
 
 
 def main() -> None:
