@@ -379,7 +379,7 @@ class MainWindow(QMainWindow):
             self._model.addItem(name, name)
         self._model.setAccessibleName("Model")
         self._revision = QComboBox()
-        self._revision.setToolTip("Model version. The newest is chosen by default.")
+        self._revision.setToolTip("Model version. The newest stable revision is chosen by default.")
         self._revision.setAccessibleName("Model revision")
 
         self._revision.setMinimumContentsLength(8)
@@ -878,6 +878,7 @@ class MainWindow(QMainWindow):
         self._revision.blockSignals(True)
         self._revision.clear()
         self._revision.addItems(model_registry.revisions(name))
+        self._revision.setCurrentText(model_registry.get_latest_revision(name))
         self._revision.blockSignals(False)
 
         safe = reads_safe(model_registry.config(name))

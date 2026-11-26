@@ -70,8 +70,9 @@ hab segment kelp-rgb input.tif output.tif --blur 5 --morph 3
 
 ## Model revisions
 
-Models are updated over time. By default `hab segment` uses the latest revision. To list the revisions of a model,
-run:
+Models are updated over time. By default `hab segment` uses the latest revision: the newest one that isn't a beta or
+a variant (a revision with a suffix, such as `20250101-small`). Betas and variants are only used when you pass them
+with `--rev`. To list the revisions of a model, run:
 
 ```bash
 hab revisions kelp-rgb
