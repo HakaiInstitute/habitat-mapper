@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPixmap, QTransform
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPixmap, QTransform
 from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsPixmapItem,
@@ -30,6 +30,10 @@ _TILE_PEN.setCosmetic(True)  # Same width at every zoom level
 _OFF_IMAGE_PEN = QPen(_TILE_PEN)
 _OFF_IMAGE_PEN.setStyle(Qt.PenStyle.DashLine)
 _CONTROLS_MARGIN = 10
+_OVERVIEW_SIZE = 150  # Longest side of the overview inset
+_OVERVIEW_GAP = 6  # Between the overview and the zoom buttons below it
+_OVERVIEW_BORDER = 1
+_OVERVIEW_RADIUS = 5
 
 
 def _to_pixmap(array: np.ndarray) -> QPixmap:
@@ -38,6 +42,90 @@ def _to_pixmap(array: np.ndarray) -> QPixmap:
     # QImage doesn't own the array's memory, so copy it before the array goes away
     image = QImage(array.data, width, height, width * channels, image_format).copy()
     return QPixmap.fromImage(image)
+
+
+class _Overview(QWidget):
+    """Small copy of the whole image with the part in view outlined. Click or drag in it to move the view."""
+
+    def __init__(self, canvas: PreviewCanvas) -> None:
+        super().__init__(canvas)
+        self._canvas = canvas
+        self._thumbnail = QPixmap()
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Click or drag to move the view")
+        self.hide()
+
+    def set_thumbnail(self, image: QPixmap, overlay: QPixmap, opacity: float) -> None:
+        """Redraw the thumbnail from the image with the overlay over it."""
+        if image.isNull():
+            self._thumbnail = QPixmap()
+            return
+        size = image.size().scaled(_OVERVIEW_SIZE, _OVERVIEW_SIZE, Qt.AspectRatioMode.KeepAspectRatio)
+        self._thumbnail = QPixmap(size)
+        painter = QPainter(self._thumbnail)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        target = QRectF(self._thumbnail.rect())
+        painter.drawPixmap(target, image, QRectF(image.rect()))
+        if not overlay.isNull():
+            painter.setOpacity(opacity)
+            painter.drawPixmap(target, overlay, QRectF(overlay.rect()))
+        painter.end()
+        border = 2 * _OVERVIEW_BORDER
+        self.setFixedSize(size.width() + border, size.height() + border)
+        self.update()
+
+    def _scale(self) -> float:
+        return self._thumbnail.width() / self._canvas.sceneRect().width()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
+        """Draw the thumbnail, dim what's out of view and outline what's in view."""
+        if self._thumbnail.isNull():
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        frame = QRectF(self.rect())
+        # Rounded like the zoom buttons below it
+        rounded = QPainterPath()
+        rounded.addRoundedRect(frame, _OVERVIEW_RADIUS, _OVERVIEW_RADIUS)
+        painter.setClipPath(rounded)
+        painter.fillRect(frame, QColor(theme.TEAL_DEEP))
+        inner = frame.adjusted(_OVERVIEW_BORDER, _OVERVIEW_BORDER, -_OVERVIEW_BORDER, -_OVERVIEW_BORDER)
+        painter.drawPixmap(inner.topLeft(), self._thumbnail)
+
+        visible = self._canvas.visible_scene_rect().intersected(self._canvas.sceneRect())
+        scale = self._scale()
+        view = QRectF(
+            inner.left() + visible.left() * scale,
+            inner.top() + visible.top() * scale,
+            visible.width() * scale,
+            visible.height() * scale,
+        )
+        outside = QPainterPath()
+        outside.addRect(inner)
+        inside = QPainterPath()
+        inside.addRect(view)
+        painter.fillPath(outside.subtracted(inside), QColor(10, 51, 53, 150))
+        painter.setPen(QPen(QColor(theme.OCHRE), 1.5))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(view)
+        painter.setClipping(False)
+        # Same faint edge as the zoom buttons
+        painter.setPen(QPen(QColor(255, 255, 255, 40), _OVERVIEW_BORDER))
+        painter.drawRoundedRect(frame.adjusted(0.5, 0.5, -0.5, -0.5), _OVERVIEW_RADIUS, _OVERVIEW_RADIUS)
+        painter.end()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """Centre the view on the point clicked."""
+        self._move_to(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        """Keep the view centred under the pointer while dragging."""
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self._move_to(event)
+
+    def _move_to(self, event: QMouseEvent) -> None:
+        point = event.position() - QPointF(_OVERVIEW_BORDER, _OVERVIEW_BORDER)
+        self._canvas.centerOn(point / self._scale())
 
 
 class PreviewCanvas(QGraphicsView):
@@ -52,6 +140,9 @@ class PreviewCanvas(QGraphicsView):
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         self.setBackgroundBrush(QColor(theme.TEAL_DEEP))
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
+        # Drag or use the overview to move around; scroll bars take space and crowd the zoom buttons
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         # Files dropped on the canvas are handled by the window
         self.setAcceptDrops(False)
@@ -66,6 +157,11 @@ class PreviewCanvas(QGraphicsView):
         self._placeholder = ("", "")
         self._drop_highlight = False
         self._controls = self._build_controls()
+        self._overview = _Overview(self)
+        # The hidden scroll bars still track the view, so they say when it moves or zooms
+        for bar in (self.horizontalScrollBar(), self.verticalScrollBar()):
+            bar.valueChanged.connect(self._update_overview)
+            bar.rangeChanged.connect(self._update_overview)
 
     def _build_controls(self) -> QWidget:
         controls = QWidget(self)
@@ -102,6 +198,7 @@ class PreviewCanvas(QGraphicsView):
         self.scene().setSceneRect(self._image.boundingRect())
         self._controls.setVisible(image is not None)
         self.fit()
+        self._update_overview()
         self.viewport().update()
 
     def has_image(self) -> bool:
@@ -136,12 +233,13 @@ class PreviewCanvas(QGraphicsView):
         image = self._image.pixmap()
         if overlay is None or image.isNull():
             self._overlay.setPixmap(QPixmap())
-            return
-        self._overlay.setPixmap(_to_pixmap(overlay))
-        # Previews of the input and output can differ in size by a pixel or two from rounding
-        self._overlay.setTransform(
-            QTransform.fromScale(image.width() / overlay.shape[1], image.height() / overlay.shape[0])
-        )
+        else:
+            self._overlay.setPixmap(_to_pixmap(overlay))
+            # Previews of the input and output can differ in size by a pixel or two from rounding
+            self._overlay.setTransform(
+                QTransform.fromScale(image.width() / overlay.shape[1], image.height() / overlay.shape[0])
+            )
+        self._refresh_thumbnail()
 
     def set_tiles(self, tiles: list[tuple[int, int, int, int]]) -> None:
         """Outline the tiles being processed, dashed where they extend past the edge of the image.
@@ -171,6 +269,7 @@ class PreviewCanvas(QGraphicsView):
         """Set how opaque the overlay is, from 0 to 1."""
         self._opacity = opacity
         self._overlay.setOpacity(opacity)
+        self._refresh_thumbnail()
 
     def fit(self) -> None:
         """Zoom to show the whole image."""
@@ -224,8 +323,35 @@ class PreviewCanvas(QGraphicsView):
             self.width() - self._controls.width() - _CONTROLS_MARGIN,
             self.height() - self._controls.height() - _CONTROLS_MARGIN,
         )
+        self._place_overview()
         if self._fitted:
             self.fit()
+
+    def visible_scene_rect(self) -> QRectF:
+        """Part of the image in view, in image pixels.
+
+        Returns:
+            The viewport's rectangle mapped into the scene.
+        """
+        return self.mapToScene(self.viewport().rect()).boundingRect()
+
+    def _refresh_thumbnail(self) -> None:
+        self._overview.set_thumbnail(self._image.pixmap(), self._overlay.pixmap(), self._opacity)
+        self._place_overview()
+
+    def _place_overview(self) -> None:
+        # Right-aligned with the zoom buttons, just above them
+        self._overview.move(
+            self._controls.geometry().right() + 1 - self._overview.width(),
+            self._controls.y() - _OVERVIEW_GAP - self._overview.height(),
+        )
+
+    def _update_overview(self) -> None:
+        """Show the overview only while part of the image is out of view."""
+        bars = self.horizontalScrollBar(), self.verticalScrollBar()
+        zoomed_in = self.has_image() and any(bar.maximum() > bar.minimum() for bar in bars)
+        self._overview.setVisible(zoomed_in)
+        self._overview.update()
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802
         """Draw the image, then the empty state message and the drop outline over it when needed."""
