@@ -39,8 +39,15 @@ class _QtTask:
 class _QtProgressReporter:
     """ProgressReporter that emits (done, total) through a Qt signal."""
 
-    def __init__(self, signal: SignalInstance) -> None:
+    def __init__(self, signal: SignalInstance, step: Callable[[str], None] | None = None) -> None:
+        """Create the reporter.
+
+        Args:
+            signal: Emitted with (done, total) as each task advances.
+            step: Called with the description of each task as it starts, e.g. "Filtering".
+        """
         self._signal = signal
+        self._step = step
 
     def __enter__(self) -> Self:
         return self
@@ -54,6 +61,8 @@ class _QtProgressReporter:
         pass
 
     def add_task(self, description: str, total: int | None = None) -> _QtTask:
+        if self._step is not None:
+            self._step(description)
         self._signal.emit(0, total or 0)
         return _QtTask(self._signal, total)
 
@@ -146,7 +155,10 @@ class SegmentWorker(QObject):
                     output_path,
                     **self._options.model_dump(),
                     quiet=True,
-                    progress=lambda: _QtProgressReporter(self.progress),
+                    # Names each step in the status bar, e.g. "Filtering image.tif" once the model is done
+                    progress=lambda name=input_path.name: _QtProgressReporter(
+                        self.progress, lambda step: self.stage.emit(f"{step} {name}")
+                    ),
                     cancel=self._cancelled.is_set,
                     observer=_LiveObserver(self, row, self._model.cfg.nodata_value, palette),
                 )

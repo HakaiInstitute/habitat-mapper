@@ -46,11 +46,14 @@ class ProcessingObserver(Protocol):
         ...
 
     def batch_started(self, windows: Sequence[Window]) -> None:
-        """Called before each batch with its tiles, which can extend past the bottom and right of the image."""
+        """Called before each batch with its tiles, which can extend past the bottom and right of the image.
+
+        If the blur or morphological filters are on, also called before each tile they filter, once the model is done.
+        """
         ...
 
     def written(self, window: Window, data: np.ndarray) -> None:
-        """Called with each part of the result as it is written, before the final blur and morphological filters."""
+        """Called with each part of the result as it is written, then again as the filters rewrite it, if on."""
         ...
 
 
@@ -293,7 +296,7 @@ class ImageProcessor:
                         task.update(advance=1)
 
             # Apply final post-processing
-            self._apply_final_postprocessing(output_path)
+            self._apply_final_postprocessing(output_path, observer)
 
     def _load_batch(
         self,
@@ -341,11 +344,13 @@ class ImageProcessor:
     def _apply_final_postprocessing(
         self,
         dst_path: str | Path,
+        observer: ProcessingObserver | None = None,
     ) -> None:
         """Apply final post-processing using tiled approach for large rasters.
 
         Args:
             dst_path: Destination rasterio dataset writer.
+            observer: Told about each tile being filtered and each filtered part as it is written.
         """
         if not (self.config.apply_median_blur or self.config.apply_morphological_ops):
             return  # No processing needed
@@ -379,8 +384,10 @@ class ImageProcessor:
             windows_list = list(windows)
             if windows_list:  # Only show progress if there are windows to process
                 with self.progress() as reporter:
-                    task = reporter.add_task("Post-processing", total=len(windows_list))
+                    task = reporter.add_task("Filtering", total=len(windows_list))
                     for window in windows_list:
+                        if observer is not None:
+                            observer.batch_started([window])
                         # Read tile with overlap
                         tile_data = dst.read(1, window=window)
 
@@ -407,7 +414,9 @@ class ImageProcessor:
                             )
 
                         # Place result, removing overlap except at boundaries
-                        self._place_window_result(dst, window, tile_data, overlap)
+                        write_window, written = self._place_window_result(dst, window, tile_data, overlap)
+                        if observer is not None:
+                            observer.written(write_window, written)
                         task.update(advance=1)
 
     @staticmethod
@@ -493,7 +502,7 @@ class ImageProcessor:
         window: Window,
         tile_result: np.ndarray,
         overlap: int,
-    ) -> None:
+    ) -> tuple[Window, np.ndarray]:
         """Place tile result into the full result array using overlap strategy.
 
         Args:
@@ -501,6 +510,9 @@ class ImageProcessor:
             window: Window object defining the region to write.
             tile_result: Result array from the model for the tile.
             overlap: Overlap size to handle edge cases.
+
+        Returns:
+            The window that was written and the data written to it.
         """
         # Calculate the region to copy (excluding overlap except at image boundaries)
         copy_row_start = window.row_off
@@ -533,3 +545,4 @@ class ImageProcessor:
         )
 
         dst.write(result, 1, window=write_window)
+        return write_window, result
