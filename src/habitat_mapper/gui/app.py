@@ -917,7 +917,9 @@ class MainWindow(QMainWindow):
         self._band_order.setPlaceholderText(f"Model default: {default_band_order(cfg)}")
         self._show_model_info()
         self._update_queue_state()
-        if not self._canvas.has_image() or self._preview_row is None:
+        # A shown result keeps the legend of the model that made it; otherwise follow the chosen model
+        previewed = self._items[self._preview_row] if self._preview_row is not None else None
+        if not self._canvas.has_image() or previewed is None or previewed.model_name is None:
             self._show_legend(cfg.classes)
 
     def _show_model_info(self) -> None:
@@ -1033,7 +1035,7 @@ class MainWindow(QMainWindow):
             if is_done(item):
                 continue
             item.output_path = output_path_for(item.input_path, output_dir, name, revision)
-            item.model_name = name
+            item.model_name, item.model_revision = name, revision
             if item.output_path in skip:
                 self._set_status(row, Status.SKIPPED)
             else:
@@ -1107,6 +1109,8 @@ class MainWindow(QMainWindow):
             self._queue.selectRow(row)
         elif self._preview_row == row:
             self._preview_label.setText(f"{self._items[row].input_path.name}, processing")
+            if self._loaded_model is not None:
+                self._show_legend(self._loaded_model.cfg.classes)
 
     def _tiles_started(self, row: int, tiles: list[tuple[int, int, int, int]]) -> None:
         if row == self._live_row:
@@ -1174,7 +1178,11 @@ class MainWindow(QMainWindow):
             return
         item = self._items[row]
         output = item.output_path if item.status is Status.DONE else None
-        model_cfg = model_registry.config(item.model_name) if item.model_name else self._current_cfg()
+        model_cfg = (
+            model_registry.config(item.model_name, item.model_revision or "latest")
+            if item.model_name
+            else self._current_cfg()
+        )
         palette = class_palette(model_cfg.classes) if model_cfg.classes else DEFAULT_PALETTE
         try:
             band_order = self._parse_band_order()
@@ -1206,7 +1214,7 @@ class MainWindow(QMainWindow):
             if item.status is Status.FAILED:
                 self._preview_label.setText(f"{name} failed: {item.error}")
             elif overlay is not None:
-                self._preview_label.setText(f"{name}, result from {item.model_name}")
+                self._preview_label.setText(f"{name}, result from {item.model_name} {item.model_revision}")
             else:
                 self._preview_label.setText(f"{name}, {item.status.value.lower()}")
 
