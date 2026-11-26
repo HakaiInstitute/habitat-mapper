@@ -7,17 +7,41 @@ from loguru import logger
 from pydantic import (
     AfterValidator,
     BaseModel,
+    ConfigDict,
     Field,
     ImportString,
     PositiveInt,
-    TypeAdapter,
-    model_validator,
 )
 
-from habitat_mapper.utils import _all_positive, _is_odd_or_zero, download_dependencies, get_local_model_dir
+from habitat_mapper.accelerators import Device  # noqa: TC001 (Pydantic needs it at runtime)
+from habitat_mapper.utils import download_dependencies, get_local_model_dir
 
 if TYPE_CHECKING:
     from habitat_mapper.reader import ImageReader
+
+
+def _is_even(value: int) -> int:
+    if value % 2:
+        raise ValueError("Tile size must be an even number.")
+    return value
+
+
+def _is_odd_or_zero(value: int) -> int:
+    if value and value % 2 == 0:
+        raise ValueError("Kernel sizes must be an odd number, or 0 to turn the filter off.")
+    return value
+
+
+def _all_positive(value: list[int]) -> list[int]:
+    if any(v < 1 for v in value):
+        raise ValueError("Band numbers start at 1.")
+    return value
+
+
+# The rules for each processing option, shared by SegmentOptions, the command line and the desktop app
+TileSize = Annotated[int, Field(gt=0), AfterValidator(_is_even)]
+KernelSize = Annotated[int, Field(ge=0), AfterValidator(_is_odd_or_zero)]
+BandOrder = Annotated[list[int], Field(min_length=1), AfterValidator(_all_positive)]
 
 
 class OutputClass(BaseModel):
@@ -29,7 +53,13 @@ class OutputClass(BaseModel):
 
 
 class ModelConfig(BaseModel):
-    """ONNXModel configuration for ONNX semantic segmentation models."""
+    """ONNXModel configuration for ONNX semantic segmentation models.
+
+    Configs are frozen, since one config is shared by every model made from it. Use `model_copy(update={...})` to make
+    a changed copy.
+    """
+
+    model_config = ConfigDict(frozen=True, validate_default=True)
 
     model_cls: Annotated[ImportString, "For dynamic loading of model class in registry"] = (
         "habitat_mapper.model.ONNXModel"
@@ -101,20 +131,32 @@ class ModelConfig(BaseModel):
         "Additional keyword arguments to pass to the reader constructor",
     ] = Field(default_factory=dict)
 
-    _import_string_adapter = TypeAdapter(ImportString)
+    def max_pixel_value_for(self, dtype: str) -> float:
+        """The value to scale an image's pixels by, resolving "auto" from the image's data type.
 
-    @model_validator(mode="after")
-    def _resolve_import_strings(self) -> "ModelConfig":
-        """Resolve ImportString defaults that Pydantic doesn't validate.
+        Args:
+            dtype: Data type of the image, e.g. "uint8".
 
         Returns:
-            The validated ModelConfig instance with resolved import strings.
+            The configured max_pixel_value, or the largest value of dtype when it is "auto".
+
+        Raises:
+            ValueError: If max_pixel_value is "auto" and the data type isn't supported.
         """
-        if isinstance(self.model_cls, str):
-            self.model_cls = self._import_string_adapter.validate_python(self.model_cls)
-        if isinstance(self.reader_cls, str):
-            self.reader_cls = self._import_string_adapter.validate_python(self.reader_cls)
-        return self
+        if self.max_pixel_value != "auto":
+            return self.max_pixel_value
+        if dtype == "uint8":
+            return 255
+        if dtype == "uint16":
+            return 65535
+        if dtype in ("float16", "float32", "float64"):
+            logger.warning(
+                "Input image has float data type. Ensure pixel values are in range [0,1] to avoid unexpected results."
+            )
+            return 1.0
+        raise ValueError(
+            f"Unsupported image data type {dtype} for model. Convert your image to uint8 or uint16 before processing."
+        )
 
     def get_local_dependency_paths(self, quiet: bool = False) -> dict[str, Path]:
         """Get local paths to all dependency files.
@@ -188,19 +230,37 @@ class ModelConfig(BaseModel):
             raise TypeError(f"Cannot instantiate {self.reader_cls.__name__} with the provided arguments: {e}") from e
 
 
-class ProcessingConfig(BaseModel):
-    """Configuration for image processing parameters."""
+class SegmentOptions(BaseModel):
+    """Options for segmenting an image, the same as the options of `hab segment`.
 
-    crop_size: Annotated[int, Field(gt=0, multiple_of=2)]
-    band_order: Annotated[list[int], Field(min_length=1), AfterValidator(_all_positive)]
+    Every option is checked here, so invalid values raise a `pydantic.ValidationError` (a `ValueError`).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    crop_size: Annotated[TileSize | None, "Tile size, or None for the model's preferred size (or 1024)"] = None
     batch_size: PositiveInt = 1
-    blur_kernel_size: Annotated[int, Field(ge=0), AfterValidator(_is_odd_or_zero)] = 0
-    morph_kernel_size: Annotated[int, Field(ge=0), AfterValidator(_is_odd_or_zero)] = 0
+    blur_kernel_size: Annotated[KernelSize, "Median blur kernel size, or 0 for none"] = 0
+    morph_kernel_size: Annotated[KernelSize, "Morphological open and close kernel size, or 0 for none"] = 0
+    band_order: Annotated[BandOrder | None, "Bands to read, starting at 1, or None for the first bands in order"] = None
+    device: Annotated[Device | None, "Hardware to run on, or None for $HAB_DEVICE or auto"] = None
+
+
+class ProcessingConfig(BaseModel):
+    """SegmentOptions resolved against a model: the tile size and bands are known."""
+
+    model_config = ConfigDict(frozen=True)
+
+    crop_size: TileSize
+    band_order: BandOrder
+    batch_size: PositiveInt = 1
+    blur_kernel_size: KernelSize = 0
+    morph_kernel_size: KernelSize = 0
 
     @property
     def stride(self) -> int:
-        """Calculate the stride based on tile size and 50% overlap."""
-        return int(self.crop_size * 0.5)
+        """Distance between tiles, which overlap by half."""
+        return self.crop_size // 2
 
     @property
     def apply_morphological_ops(self) -> bool:

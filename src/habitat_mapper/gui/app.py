@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
+from pydantic import ValidationError
 from PySide6.QtCore import QObject, QPoint, QProcess, QRectF, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
@@ -53,6 +54,7 @@ from PySide6.QtWidgets import (
 
 from habitat_mapper import __version__
 from habitat_mapper.accelerators import select_accelerators
+from habitat_mapper.config import SegmentOptions
 from habitat_mapper.gui import theme
 from habitat_mapper.gui.batch import BatchItem, Status, existing_outputs, output_path_for, output_stem
 from habitat_mapper.gui.canvas import PreviewCanvas
@@ -909,30 +911,26 @@ class MainWindow(QMainWindow):
             self._legend_layout.addWidget(QLabel(output_class.name))
             self._legend_layout.addSpacing(8)
 
-    def _options(self) -> dict[str, object]:
-        """Read the advanced options as ImageProcessor.from_model keyword arguments.
+    def _options(self) -> SegmentOptions:
+        """Read the advanced options.
 
         Returns:
-            The keyword arguments.
+            The options.
 
         Raises:
             ValueError: If an option is invalid, with a message for the user.
         """
-        crop_size = self._crop_size.value() or None
-        if crop_size is not None and crop_size % 2:
-            raise ValueError("Tile size must be an even number.")
-        for label, box in [("Median blur", self._blur), ("Morphological filter", self._morph)]:
-            if box.value() and box.value() % 2 == 0:
-                raise ValueError(f"{label} must be an odd number, or off.")
-
-        return {
-            "crop_size": crop_size,
-            # Batches larger than 1 were never faster in testing
-            "batch_size": 1,
-            "blur_kernel_size": self._blur.value(),
-            "morph_kernel_size": self._morph.value(),
-            "band_order": self._parse_band_order(),
-        }
+        try:
+            return SegmentOptions(
+                crop_size=self._crop_size.value() or None,
+                # Batches larger than 1 were never faster in testing
+                batch_size=1,
+                blur_kernel_size=self._blur.value(),
+                morph_kernel_size=self._morph.value(),
+                band_order=self._parse_band_order(),
+            )
+        except ValidationError as e:
+            raise ValueError(e.errors()[0]["msg"].removeprefix("Value error, ")) from None
 
     def _parse_band_order(self) -> list[int] | None:
         """Read the band order option.
@@ -947,12 +945,9 @@ class MainWindow(QMainWindow):
         if not text:
             return None
         try:
-            band_order = [int(band) for band in re.split(r"[\s,]+", text)]
+            return [int(band) for band in re.split(r"[\s,]+", text)]
         except ValueError:
             raise ValueError("Band order must be band numbers separated by commas, e.g. 3, 2, 1.") from None
-        if any(band < 1 for band in band_order):
-            raise ValueError("Band numbers start at 1.")
-        return band_order
 
     # Running
 

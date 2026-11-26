@@ -8,13 +8,14 @@ import os
 import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import humanize
 import platformdirs
 from cyclopts import App, Parameter
 from cyclopts.types import File, PositiveInt  # noqa: TC002
 from loguru import logger
+from pydantic import TypeAdapter, ValidationError
 from rich import box
 from rich.console import Console
 from rich.markup import escape
@@ -24,8 +25,12 @@ from rich.table import Table
 from rich.traceback import install
 
 from habitat_mapper.accelerators import DEVICE_ENV_VAR, Device, find_accelerators, select_accelerators
+from habitat_mapper.config import BandOrder, KernelSize, TileSize
 from habitat_mapper.registry import model_registry
 from habitat_mapper.utils import get_local_model_dir, is_url
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 app = App(name="hab", help="Habitat segmentation of geospatial imagery with AI.")
 console = Console()
@@ -90,27 +95,23 @@ if DEBUG:
     install()
 
 
-def _positive_even_int_validator(type_: type, value: int | None) -> None:
-    if value is None:
-        pass
-    elif value % 2 == 1 or value <= 0:
-        raise TypeError("Value must be a positive, even number.")
+def _follows(rule: object) -> Callable[[type, object], None]:
+    """Make a cyclopts validator from one of the option rules in habitat_mapper.config, so both check the same things.
 
+    Returns:
+        The validator.
+    """
+    adapter = TypeAdapter(rule)
 
-def _positive_odd_int_or_zero_validator(type_: type, value: int | None) -> None:
-    if value is None:
-        pass
-    elif value == 0:
-        pass
-    elif value % 2 == 0 or value < 0:
-        raise TypeError("Value must be a positive, odd number.")
+    def validator(type_: type, value: object) -> None:
+        if value is None:
+            return
+        try:
+            adapter.validate_python(value)
+        except ValidationError as e:
+            raise TypeError(e.errors()[0]["msg"].removeprefix("Value error, ")) from None
 
-
-def _band_validator(type_: type, value: list[int] | None) -> None:
-    if value is None:
-        pass
-    elif not all([v >= 1 for v in value]):
-        raise TypeError("All values must be >= 1.")
+    return validator
 
 
 def _existing_model_validator(type_: type, value: str) -> None:
@@ -224,8 +225,7 @@ def revisions(
         revs.sort(key=lambda a: (-int(a[:8]), a[8:]))
 
         for revision in revs:
-            model = models_by_revision[revision]
-            cfg = model.cfg
+            cfg = models_by_revision[revision]
 
             # Check if model is cached locally
             # Check if any dependency is a URL
@@ -416,7 +416,7 @@ def segment(
         int | None,
         Parameter(
             help="Tile size for processing (must be even). Defaults to the 1024 or to the size required by the model",
-            validator=_positive_even_int_validator,
+            validator=_follows(TileSize),
             name=["--crop-size", "-z"],
         ),
     ] = None,
@@ -424,7 +424,7 @@ def segment(
         int,
         Parameter(
             help="Size of median blur kernel (must be odd, 0 to disable)",
-            validator=_positive_odd_int_or_zero_validator,
+            validator=_follows(KernelSize),
             name=["--blur"],
         ),
     ] = 0,
@@ -432,7 +432,7 @@ def segment(
         int,
         Parameter(
             help="Size of morphological kernel (must be odd, 0 to disable)",
-            validator=_positive_odd_int_or_zero_validator,
+            validator=_follows(KernelSize),
             name=["--morph"],
         ),
     ] = 0,
@@ -440,7 +440,7 @@ def segment(
         list[int] | None,
         Parameter(
             help="Band reordering flag for rearranging bands into RGB(+NIR) order when necessary.",
-            validator=_band_validator,
+            validator=_follows(BandOrder),
             name=["--band", "-b"],
             negative="",
         ),

@@ -12,15 +12,15 @@ if TYPE_CHECKING:
 
 
 class ModelRegistry:
-    """A model_registry for models that allows for dynamic registration and retrieval.
+    """The configurations of the available models, by name and revision.
 
-    Supports multiple revisions of the same model with calendar versioning.
+    Supports multiple revisions of the same model with calendar versioning. Indexing the registry makes a new model
+    from the configuration each time, so models are never shared between callers (or threads).
     """
 
     def __init__(self) -> None:
         """Create a new ModelRegistry instance."""
-        # Changed to nested dict: {name: {revision: model}}
-        self._models: dict[str, dict[str, ONNXModel]] = {}
+        self._models: dict[str, dict[str, ModelConfig]] = {}
 
     def list_models(self) -> list[tuple[str, str]]:
         """List all registered model names and revisions.
@@ -57,7 +57,7 @@ class ModelRegistry:
         if name not in self._models:
             self._models[name] = {}
 
-        self._models[name][revision] = model_config.model_cls(model_config)
+        self._models[name][revision] = model_config
 
     @classmethod
     def from_config_dir(cls, config_dir: str | Path) -> ModelRegistry:
@@ -98,13 +98,13 @@ class ModelRegistry:
         return revisions[0]
 
     def __getitem__(self, key: str | tuple[str, str]) -> ONNXModel:
-        """Retrieve a model by its name (latest revision) or by (name, revision) tuple.
+        """Make a model by its name (latest revision) or by (name, revision) tuple.
 
         Args:
             key: Either model name (str) for latest revision, or (name, revision) tuple
 
         Returns:
-            ONNXModel instance
+            A new instance of the configured model class, usually ONNXModel. Keep it to reuse its loaded session.
 
         Raises:
             KeyError: If the model or revision is not registered.
@@ -119,13 +119,14 @@ class ModelRegistry:
                     f"Revision '{revision}' of model '{name}' is not registered. "
                     f"Available revisions: {available_revisions}",
                 )
-            return self._models[name][revision]
+            cfg = self._models[name][revision]
+            return cfg.model_cls(cfg)
         # Single string key - get latest revision
         name = key
         if name not in self._models:
             raise KeyError(f"Model '{name}' is not registered.")
-        latest_revision = self.get_latest_revision(name)
-        return self._models[name][latest_revision]
+        cfg = self._models[name][self.get_latest_revision(name)]
+        return cfg.model_cls(cfg)
 
     def __contains__(self, key: str | tuple[str, str]) -> bool:
         """Check if a model is registered by its name or (name, revision).

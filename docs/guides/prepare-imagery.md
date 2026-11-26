@@ -26,6 +26,9 @@ hab segment kelp-rgbi input.tif output.tif -b 3 -b 2 -b 1 -b 4
 That reads band 3 as red, band 2 as green, band 1 as blue and band 4 as NIR. In Python, pass
 `band_order=[3, 2, 1, 4]` instead.
 
+Give one band for each band the model reads: three for RGB models, four for RGB+NIR. The bands can come from an image
+with more bands, e.g. `-b 5 -b 3 -b 2` reads bands 5, 3 and 2 of a six-band drone image as red, green and blue.
+
 !!! warning "Don't substitute bands"
     The models learned the relationships between these specific bands. Feeding in a different band, such as
     red-edge in place of red, will not work.

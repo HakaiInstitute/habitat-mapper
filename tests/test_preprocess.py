@@ -50,7 +50,7 @@ def test_preprocess_matches_reference(normalization: str | None, dtype: type) ->
     rng = np.random.default_rng(0)
     batch = rng.integers(0, np.iinfo(dtype).max, size=(2, 3, 16, 16), endpoint=True, dtype=dtype)
 
-    out = _model(normalization)._preprocess(batch)
+    out = _model(normalization).preprocess(batch, np.iinfo(dtype).max)
 
     assert out.dtype == np.float32
     assert out.shape == batch.shape
@@ -59,5 +59,5 @@ def test_preprocess_matches_reference(normalization: str | None, dtype: type) ->
 
 def test_preprocess_does_not_modify_input() -> None:
     batch = np.full((1, 3, 4, 4), 100, dtype=np.float32)
-    _model("standard", max_pixel_value=255.0)._preprocess(batch)
+    _model("standard").preprocess(batch, 255.0)
     assert np.all(batch == 100)

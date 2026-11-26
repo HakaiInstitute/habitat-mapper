@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import rasterio
 
-from habitat_mapper.config import ProcessingConfig
+from habitat_mapper.config import ProcessingConfig, SegmentOptions
 from habitat_mapper.processing import ImageProcessor, ProcessingCancelled
 from habitat_mapper.progress import NullProgressReporter
 from tests.test_blank_tile_skipping import CROP_SIZE, _make_stub_model, _write_raster
@@ -25,7 +25,7 @@ def _processor(model: MagicMock | None = None) -> ImageProcessor:
     return ImageProcessor(
         model=model or _make_stub_model([]),
         config=ProcessingConfig(crop_size=CROP_SIZE, batch_size=1, blur_kernel_size=0, band_order=[1, 2, 3]),
-        reporter_cls=NullProgressReporter,
+        progress=NullProgressReporter,
     )
 
 
@@ -49,7 +49,7 @@ def test_cancel_stops_and_deletes_output(tmp_path: Path) -> None:
     with pytest.raises(ProcessingCancelled):
         processor.run(_random_image(tmp_path / "input.tif", np.uint8), out_path, cancel=cancel)
 
-    assert model._predict.call_count == 1
+    assert model.predict.call_count == 1
     assert not out_path.exists()
 
 
@@ -59,14 +59,13 @@ def test_auto_max_pixel_value_is_detected_per_image(tmp_path: Path) -> None:
     assert model.cfg.max_pixel_value == "auto"
 
     processor.run(_random_image(tmp_path / "uint8.tif", np.uint8), tmp_path / "out8.tif")
-    assert model.cfg.max_pixel_value == "auto"
+    assert {call.args[1] for call in model.predict.call_args_list} == {255}
 
     # A uint16 image after a uint8 one must not be scaled with the uint8 range
-    seen = []
-    predict = model._predict.side_effect
-    model._predict.side_effect = lambda batch: seen.append(model.cfg.max_pixel_value) or predict(batch)
+    model.predict.reset_mock()
     processor.run(_random_image(tmp_path / "uint16.tif", np.uint16), tmp_path / "out16.tif")
-    assert set(seen) == {65535}
+    assert {call.args[1] for call in model.predict.call_args_list} == {65535}
+    assert model.cfg.max_pixel_value == "auto"
 
 
 def test_unsupported_dtype_raises(tmp_path: Path) -> None:
@@ -108,3 +107,16 @@ def test_observer_sees_every_batch_and_the_whole_result(tmp_path: Path) -> None:
     assert all(w.width == w.height == CROP_SIZE for b in observer.batches for w in b)
     with rasterio.open(out_path) as src:
         np.testing.assert_array_equal(observer.result, src.read(1))
+
+
+@pytest.mark.parametrize("band_order", [[1, 2], [1, 2, 3, 4]])
+def test_band_order_needs_one_band_per_model_input(band_order: list[int]) -> None:
+    with pytest.raises(ValueError, match="takes 3 bands"):
+        ImageProcessor.from_model(_make_stub_model([]), SegmentOptions(crop_size=CROP_SIZE, band_order=band_order))
+
+
+def test_band_order_can_pick_from_more_bands_than_the_model_takes() -> None:
+    model = _make_stub_model([])
+    model.input_size = None
+    processor = ImageProcessor.from_model(model, SegmentOptions(crop_size=CROP_SIZE, band_order=[6, 4, 2]))
+    assert processor.config.band_order == [6, 4, 2]

@@ -2,9 +2,10 @@
 
 from importlib.metadata import version
 
-from habitat_mapper.config import ModelConfig
+from habitat_mapper.config import ModelConfig, SegmentOptions
 from habitat_mapper.main import clean, models, revisions, segment
 from habitat_mapper.model import ONNXModel
+from habitat_mapper.processing import ProcessingCancelled, ProcessingObserver
 from habitat_mapper.progress import NullProgressReporter, ProgressReporter, RichProgressReporter
 from habitat_mapper.registry import model_registry
 
@@ -12,8 +13,11 @@ __all__ = [
     "ModelConfig",
     "NullProgressReporter",
     "ONNXModel",
+    "ProcessingCancelled",
+    "ProcessingObserver",
     "ProgressReporter",
     "RichProgressReporter",
+    "SegmentOptions",
     "clean",
     "model_registry",
     "models",

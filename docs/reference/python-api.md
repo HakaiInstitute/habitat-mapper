@@ -18,12 +18,26 @@ with a model name, or with a `(name, revision)` tuple: `model_registry["kelp-rgb
         - name
         - revision
         - description
+        - device
         - input_size
+        - active_device
         - process
+        - predict
+        - postprocess
 
 ::: habitat_mapper.ModelConfig
     options:
       show_if_no_docstring: true
+
+::: habitat_mapper.SegmentOptions
+    options:
+      show_if_no_docstring: true
+
+## Processing
+
+::: habitat_mapper.ProcessingObserver
+
+::: habitat_mapper.ProcessingCancelled
 
 ## Progress reporting
 

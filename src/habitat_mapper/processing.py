@@ -13,15 +13,15 @@ import rasterio
 from loguru import logger
 from rasterio.windows import Window
 
-from habitat_mapper.config import ProcessingConfig
+from habitat_mapper.config import ProcessingConfig, SegmentOptions
 from habitat_mapper.hann import BartlettHannKernel, NumpyMemoryRegister
-from habitat_mapper.progress import NullProgressReporter, ProgressReporter, RichProgressReporter
+from habitat_mapper.progress import NullProgressReporter, ProgressReporter
 from habitat_mapper.utils import batched
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Iterable, Sequence
 
-    from habitat_mapper.model import ONNXModel
+    from habitat_mapper.config import ModelConfig
     from habitat_mapper.reader import ImageReader
 
 
@@ -45,53 +45,64 @@ class ProcessingObserver(Protocol):
         ...
 
 
-@dataclass
-class ImageProcessor:
-    """High-level image processor that orchestrates model inference and tiled processing."""
+class Segmenter(Protocol):
+    """What ImageProcessor needs from a model. ONNXModel is one."""
 
-    model: ONNXModel
+    @property
+    def cfg(self) -> ModelConfig:
+        """The model's configuration."""
+        ...
+
+    @property
+    def input_size(self) -> int | None:
+        """The square tile size the model takes, or None if it takes any size."""
+        ...
+
+    def predict(self, batch: np.ndarray, max_pixel_value: float) -> np.ndarray:
+        """Score each class for a batch of tiles with shape [batch_size, channels, height, width]."""
+        ...
+
+    def postprocess(self, batch: np.ndarray) -> np.ndarray:
+        """Turn the scores for one tile into class labels."""
+        ...
+
+
+@dataclass(frozen=True)
+class ImageProcessor:
+    """Segments a large image tile by tile, blending overlapping tiles, then smooths the result."""
+
+    model: Segmenter
     config: ProcessingConfig
-    reporter_cls: Callable[[], ProgressReporter] = field(default=RichProgressReporter)
+    progress: Callable[[], ProgressReporter] = field(default=NullProgressReporter)
 
     @classmethod
     def from_model(
         cls,
-        model: ONNXModel,
+        model: Segmenter,
+        options: SegmentOptions | None = None,
         *,
-        crop_size: int | None = None,
-        batch_size: int = 1,
-        blur_kernel_size: int = 0,
-        morph_kernel_size: int = 0,
-        band_order: list[int] | None = None,
-        quiet: bool = False,
+        progress: Callable[[], ProgressReporter] = NullProgressReporter,
     ) -> ImageProcessor:
-        """Create an ImageProcessor from a model with processing parameters.
+        """Resolve the options against the model, e.g. using the model's tile size.
 
         Args:
-            model: The ONNX model to use
-            crop_size: Tile size for processing (uses model's preferred size if None)
-            batch_size: Batch size for processing
-            blur_kernel_size: Size of median blur kernel (must be odd, 0 to disable)
-            morph_kernel_size: Size of morphological kernel (0 to disable)
-            band_order: List of band indices (1-based like GDAL)
-            quiet: If True, use NullProgressReporter to suppress all progress output.
+            model: The model to run.
+            options: Processing options. Defaults to SegmentOptions().
+            progress: Makes the progress reporter for each stage.
 
         Returns:
             Configured ImageProcessor instance
 
         Raises:
-            ValueError: If band_order contains invalid indices
+            ValueError: If band_order has more bands than the model takes.
         """
-        if band_order is None:
-            band_order = [i + 1 for i in range(model.cfg.input_channels)]
-        else:
-            if max(band_order) > model.cfg.input_channels:
-                raise ValueError(
-                    f"band_order contains index {max(band_order)} which exceeds model input "
-                    f"channels ({model.cfg.input_channels})",
-                )
+        options = options or SegmentOptions()
+        channels = model.cfg.input_channels
+        band_order = options.band_order or list(range(1, channels + 1))
+        if len(band_order) != channels:
+            raise ValueError(f"{model.cfg.name} takes {channels} bands, but band_order has {len(band_order)}.")
 
-        model._quiet = quiet  # propagate so any download triggered by input_size is quiet
+        crop_size = options.crop_size
         if crop_size is None:
             crop_size = model.input_size or 1024
         elif model.input_size is not None and crop_size != model.input_size:
@@ -103,13 +114,12 @@ class ImageProcessor:
 
         config = ProcessingConfig(
             crop_size=crop_size,
-            batch_size=batch_size,
-            blur_kernel_size=blur_kernel_size,
-            morph_kernel_size=morph_kernel_size,
+            batch_size=options.batch_size,
+            blur_kernel_size=options.blur_kernel_size,
+            morph_kernel_size=options.morph_kernel_size,
             band_order=band_order,
         )
-        reporter_cls = NullProgressReporter if quiet else RichProgressReporter
-        return cls(model=model, config=config, reporter_cls=reporter_cls)
+        return cls(model=model, config=config, progress=progress)
 
     def run(
         self,
@@ -129,15 +139,11 @@ class ImageProcessor:
         Raises:
             ProcessingCancelled: If cancel returned True.
         """
-        # The model config is shared by every run, so don't keep the pixel range detected from this image
-        max_pixel_value = self.model.cfg.max_pixel_value
         try:
             self._run(img_path, output_path, cancel, observer)
         except ProcessingCancelled:
             Path(output_path).unlink(missing_ok=True)
             raise
-        finally:
-            self.model.cfg.max_pixel_value = max_pixel_value
 
     def _run(
         self,
@@ -149,7 +155,6 @@ class ImageProcessor:
         """Process a raster file with tiled segmentation. See run.
 
         Raises:
-            ValueError: If the image data type isn't supported.
             ProcessingCancelled: If cancel returned True.
         """
         register = None
@@ -173,24 +178,7 @@ class ImageProcessor:
             except ImportError:
                 profile = self._create_profile_from_reader(reader)
 
-            if self.model.cfg.max_pixel_value == "auto":
-                # Automatically determine max pixel value based on dtype
-                if dtype == "uint8":
-                    self.model.cfg.max_pixel_value = 255
-                elif dtype == "uint16":
-                    self.model.cfg.max_pixel_value = 65535
-                elif dtype in ["float16", "float32", "float64"]:
-                    # Warn that float types should be normalized
-                    logger.warning(
-                        "Warning: Input image has float data type. "
-                        "Ensure pixel values are in range [0,1] to avoid unexpected results."
-                    )
-                    self.model.cfg.max_pixel_value = 1.0
-                else:
-                    raise ValueError(
-                        f"Unsupported image data type {dtype} for model. "
-                        f"Convert your image to uint8 or uint16 before processing."
-                    )
+            max_pixel_value = self.model.cfg.max_pixel_value_for(dtype)
 
             # Update profile for output
             profile.update({"dtype": "uint8", "count": 1, "compress": "lzw", "nodata": self.model.cfg.nodata_value})
@@ -212,7 +200,7 @@ class ImageProcessor:
             window_batches = list(batched(windows, n=self.config.batch_size))
 
             with rasterio.open(output_path, "w", **profile) as dst:
-                with self.reporter_cls() as reporter:
+                with self.progress() as reporter:
                     task = reporter.add_task("Segmenting", total=len(window_batches))
                     for window_batch in window_batches:
                         if cancel is not None and cancel():
@@ -249,7 +237,7 @@ class ImageProcessor:
                             continue
 
                         # Process batch through model
-                        result_batch = self.model._predict(input_batch)
+                        result_batch = self.model.predict(input_batch, max_pixel_value)
 
                         if register is None:
                             num_classes = result_batch.shape[1]
@@ -286,7 +274,7 @@ class ImageProcessor:
                                 left=is_left,
                                 right=is_right,
                             )
-                            data = self.model._postprocess(data)
+                            data = self.model.postprocess(data)
                             dst.write(data, 1, window=write_window)
                             if observer is not None:
                                 observer.written(write_window, data)
@@ -404,7 +392,7 @@ class ImageProcessor:
 
             windows_list = list(windows)
             if windows_list:  # Only show progress if there are windows to process
-                with self.reporter_cls() as reporter:
+                with self.progress() as reporter:
                     task = reporter.add_task("Post-processing", total=len(windows_list))
                     for window in windows_list:
                         # Read tile with overlap
