@@ -602,32 +602,14 @@ class SAFEReader(ImageReader):
         img_width = self.width
 
         if boundless:
-            # Clip to image bounds
-            row_start_clipped = max(0, row_start)
-            row_end_clipped = min(img_height, row_end)
-            col_start_clipped = max(0, col_start)
-            col_end_clipped = min(img_width, col_end)
-
-            # Read the clipped region
-            if row_start_clipped < row_end_clipped and col_start_clipped < col_end_clipped:
-                data = self._stacked[:, row_start_clipped:row_end_clipped, col_start_clipped:col_end_clipped]
-            else:
-                # Completely outside bounds
-                data = np.full((self.num_bands, 0, 0), fill_value, dtype=self.dtype)
-
-            # Pad to requested window size
-            pad_top = max(0, -row_start)
-            pad_bottom = max(0, row_end - img_height)
-            pad_left = max(0, -col_start)
-            pad_right = max(0, col_end - img_width)
-
-            if pad_top > 0 or pad_bottom > 0 or pad_left > 0 or pad_right > 0:
-                data = np.pad(
-                    data,
-                    ((0, 0), (pad_top, pad_bottom), (pad_left, pad_right)),
-                    mode="constant",
-                    constant_values=fill_value,
-                )
+            # Start from the fill value, then copy in whatever part of the image the window covers
+            data = np.full((self.num_bands, window.height, window.width), fill_value, dtype=self._stacked.dtype)
+            rows = slice(max(0, row_start), min(img_height, row_end))
+            cols = slice(max(0, col_start), min(img_width, col_end))
+            if rows.start < rows.stop and cols.start < cols.stop:
+                into_rows = slice(rows.start - row_start, rows.stop - row_start)
+                into_cols = slice(cols.start - col_start, cols.stop - col_start)
+                data[:, into_rows, into_cols] = self._stacked[:, rows, cols]
         else:
             # Strict bounds checking
             if row_start < 0 or row_end > img_height or col_start < 0 or col_end > img_width:
