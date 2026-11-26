@@ -50,6 +50,9 @@ dev = [
     "pyupgrade>=3.20.0",
     "ruff>=0.17.6",
     "types-requests>=2.32.4.20250809",
+    "pytest-cov>=7.1.0",
+    "diff-cover>=11.0.4",
+    "mutmut>=3.8.1",
 ]
 docs = [
     "mkdocstrings-python>=1.19.0",
@@ -135,6 +138,49 @@ module = [
     "rasterio.*"
 ]
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+# Keeps pytest out of mutmut's mutants/ copy of the tests
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["habitat_mapper"]
+omit = [
+    # Qt styling and system tray wiring have no logic worth asserting on
+    "*/habitat_mapper/gui/theme.py",
+    "*/habitat_mapper/gui/tray.py",
+]
+
+[tool.coverage.report]
+# A ratchet, not a target: raise this when coverage goes up so it can't quietly fall back
+fail_under = 41
+skip_covered = true
+show_missing = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.mutmut]
+# Modules where a bug silently produces a wrong raster rather than an error. Run with `uv run mutmut run`, then
+# `uv run mutmut results` lists the mutants no test noticed
+source_paths = ["src/habitat_mapper"]
+only_mutate = [
+    "src/habitat_mapper/hann.py",
+    "src/habitat_mapper/processing.py",
+    "src/habitat_mapper/utils.py",
+    "src/habitat_mapper/model.py",
+    "src/habitat_mapper/registry.py",
+    "src/habitat_mapper/gui/preview.py",
+]
+pytest_add_cli_args = ["-p", "no:cacheprovider"]
+# accelerators.py isn't mutated, and one of its tests trips over mutmut capturing stderr
+pytest_add_cli_args_test_selection = ["--ignore=tests/test_accelerators.py"]
+# Needed by tests/test_cli_docs.py
+also_copy = ["scripts/", "docs/reference/"]
 
 [tool.uv]
 # Only lock package versions that ship wheels for the platforms we test on
