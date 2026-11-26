@@ -1,4 +1,4 @@
-"""A module containing the ModelRegistry class that indexes the available models for inference."""
+"""The ModelRegistry, which lists the available models and their revisions."""
 
 from __future__ import annotations
 
@@ -11,36 +11,40 @@ if TYPE_CHECKING:
     from habitat_mapper.model import ONNXModel
 
 
+class ModelNotFoundError(KeyError):
+    """Raised for a model name or revision that isn't in the registry."""
+
+    def __str__(self) -> str:
+        """The message, without the quotes KeyError adds.
+
+        Returns:
+            The message.
+        """
+        return str(self.args[0])
+
+
+def _newest_first(revision: str) -> tuple[int, str]:
+    """Sort key for revisions: newest date (YYYYMMDD) first, then the plain revision before its variants.
+
+    Returns:
+        The key.
+    """
+    return -int(revision[:8]), revision[8:]
+
+
 class ModelRegistry:
     """The configurations of the available models, by name and revision.
 
-    Supports multiple revisions of the same model with calendar versioning. Indexing the registry makes a new model
-    from the configuration each time, so models are never shared between callers (or threads).
+    Revisions are dates, YYYYMMDD, optionally followed by a variant, e.g. 20250101-small. The latest revision is the
+    newest date, preferring the plain revision over its variants.
+
+    Indexing the registry makes a new model from the configuration each time, so models are never shared between
+    callers (or threads).
     """
 
     def __init__(self) -> None:
         """Create a new ModelRegistry instance."""
-        self._models: dict[str, dict[str, ModelConfig]] = {}
-
-    def list_models(self) -> list[tuple[str, str]]:
-        """List all registered model names and revisions.
-
-        Returns:
-             A list of (name, revision) tuples.
-        """
-        models = []
-        for name, revisions in self._models.items():
-            for revision in revisions.keys():
-                models.append((name, revision))
-        return models
-
-    def list_model_names(self) -> list[str]:
-        """List unique model names (without revisions).
-
-        Returns:
-            List of unique model names registered in the registry.
-        """
-        return list(self._models.keys())
+        self._configs: dict[str, dict[str, ModelConfig]] = {}
 
     def register_model(self, model_config: ModelConfig) -> None:
         """Register a model configuration.
@@ -50,14 +54,7 @@ class ModelRegistry:
         """
         if not isinstance(model_config, ModelConfig):
             raise TypeError("model_config must be an instance of ModelConfig")
-
-        name = model_config.name
-        revision = model_config.revision
-
-        if name not in self._models:
-            self._models[name] = {}
-
-        self._models[name][revision] = model_config
+        self._configs.setdefault(model_config.name, {})[model_config.revision] = model_config
 
     @classmethod
     def from_config_dir(cls, config_dir: str | Path) -> ModelRegistry:
@@ -69,33 +66,69 @@ class ModelRegistry:
             ModelRegistry instance with models loaded from the specified directory.
         """
         reg = cls()
-        config_path = Path(config_dir)
-
-        for config_file in config_path.glob("*.json"):
-            # Validate and parse the JSON configuration
-            config_data = ModelConfig.model_validate_json(open(config_file).read())
-            reg.register_model(config_data)
-
+        for config_file in Path(config_dir).glob("*.json"):
+            reg.register_model(ModelConfig.model_validate_json(config_file.read_text()))
         return reg
 
-    def get_latest_revision(self, name: str) -> str:
-        """Get the latest revision of a model by calendar versioning.
+    def list_model_names(self) -> list[str]:
+        """List the model names, sorted.
 
         Returns:
-            Latest revision string
+            The names.
+        """
+        return sorted(self._configs)
+
+    def list_models(self) -> list[tuple[str, str]]:
+        """List every model name and revision.
+
+        Returns:
+            (name, revision) pairs, by name and then newest revision first.
+        """
+        return [(name, revision) for name in self.list_model_names() for revision in self.revisions(name)]
+
+    def revisions(self, name: str) -> list[str]:
+        """List a model's revisions, latest first.
+
+        Returns:
+            The revisions.
 
         Raises:
-            KeyError: If the model is not registered.
+            ModelNotFoundError: If there is no such model.
         """
-        if name not in self._models:
-            raise KeyError(f"Model '{name}' is not registered.")
+        if name not in self._configs:
+            raise ModelNotFoundError(f"Model {name} was not found. Run `hab models` to see the options.")
+        return sorted(self._configs[name], key=_newest_first)
 
-        revisions = list(self._models[name].keys())
+    def get_latest_revision(self, name: str) -> str:
+        """Get the latest revision of a model.
 
-        # Primary: descending date (YYYYMMDD); secondary: no-suffix before variants
-        revisions.sort(key=lambda a: (-int(a[:8]), a[8:]))
+        Returns:
+            Latest revision string. Raises ModelNotFoundError if there is no such model.
+        """
+        return self.revisions(name)[0]
 
-        return revisions[0]
+    def config(self, name: str, revision: str = "latest") -> ModelConfig:
+        """Get the configuration of a model revision.
+
+        Args:
+            name: Model name, e.g. "kelp-rgb".
+            revision: Revision, or "latest".
+
+        Returns:
+            The configuration.
+
+        Raises:
+            ModelNotFoundError: If there is no such model or revision.
+        """
+        revisions = self.revisions(name)
+        if revision == "latest":
+            revision = revisions[0]
+        if revision not in revisions:
+            raise ModelNotFoundError(
+                f"Revision {revision} was not found for model {name}. Available revisions: {', '.join(revisions)}. "
+                f"Run `hab revisions --model {name}` for details."
+            )
+        return self._configs[name][revision]
 
     def __getitem__(self, key: str | tuple[str, str]) -> ONNXModel:
         """Make a model by its name (latest revision) or by (name, revision) tuple.
@@ -105,27 +138,8 @@ class ModelRegistry:
 
         Returns:
             A new instance of the configured model class, usually ONNXModel. Keep it to reuse its loaded session.
-
-        Raises:
-            KeyError: If the model or revision is not registered.
         """
-        if isinstance(key, tuple):
-            name, revision = key
-            if name not in self._models:
-                raise KeyError(f"Model '{name}' is not registered.")
-            if revision not in self._models[name]:
-                available_revisions = list(self._models[name].keys())
-                raise KeyError(
-                    f"Revision '{revision}' of model '{name}' is not registered. "
-                    f"Available revisions: {available_revisions}",
-                )
-            cfg = self._models[name][revision]
-            return cfg.model_cls(cfg)
-        # Single string key - get latest revision
-        name = key
-        if name not in self._models:
-            raise KeyError(f"Model '{name}' is not registered.")
-        cfg = self._models[name][self.get_latest_revision(name)]
+        cfg = self.config(*key) if isinstance(key, tuple) else self.config(key)
         return cfg.model_cls(cfg)
 
     def __contains__(self, key: str | tuple[str, str]) -> bool:
@@ -136,8 +150,8 @@ class ModelRegistry:
         """
         if isinstance(key, tuple):
             name, revision = key
-            return name in self._models and revision in self._models[name]
-        return key in self._models
+            return revision in self._configs.get(name, {})
+        return key in self._configs
 
     def __repr__(self) -> str:
         """Get a representative string describing this instance.
@@ -145,11 +159,7 @@ class ModelRegistry:
         Returns:
             Representative string of the ModelRegistry instance.
         """
-        model_info = []
-        for name, revisions in self._models.items():
-            revision_list = list(revisions.keys())
-            model_info.append(f"{name}: {revision_list}")
-        return f"ModelRegistry({model_info})"
+        return f"ModelRegistry({[f'{name}: {self.revisions(name)}' for name in self.list_model_names()]})"
 
     def __len__(self) -> int:
         """Get the total number of registered model revisions.
@@ -157,7 +167,7 @@ class ModelRegistry:
         Returns:
             Total number of model revisions registered.
         """
-        return sum(len(revisions) for revisions in self._models.values())
+        return sum(len(revisions) for revisions in self._configs.values())
 
 
 # Initialize the model registry from the default configuration directory

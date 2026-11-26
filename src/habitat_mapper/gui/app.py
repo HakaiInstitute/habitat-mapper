@@ -366,7 +366,7 @@ class MainWindow(QMainWindow):
 
     def _build_model_picker(self) -> QVBoxLayout:
         self._model = QComboBox()
-        for name in sorted(model_registry.list_model_names()):
+        for name in model_registry.list_model_names():
             self._model.addItem(name, name)
         self._model.setAccessibleName("Model")
         self._revision = QComboBox()
@@ -862,17 +862,16 @@ class MainWindow(QMainWindow):
     def _current_cfg(self) -> ModelConfig:
         name = self._model.currentData()
         revision = self._revision.currentText()
-        return (model_registry[name, revision] if revision else model_registry[name]).cfg
+        return model_registry.config(name, revision or "latest")
 
     def _model_changed(self) -> None:
         name = self._model.currentData()
         self._revision.blockSignals(True)
         self._revision.clear()
-        revisions = (revision for model_name, revision in model_registry.list_models() if model_name == name)
-        self._revision.addItems(sorted(revisions, reverse=True))
+        self._revision.addItems(model_registry.revisions(name))
         self._revision.blockSignals(False)
 
-        safe = reads_safe(model_registry[name].cfg)
+        safe = reads_safe(model_registry.config(name))
         self._add_images_button.setVisible(not safe)
         self._add_images_action.setVisible(not safe)
         self._add_safe_button.setVisible(safe)
@@ -1140,7 +1139,7 @@ class MainWindow(QMainWindow):
             return
         item = self._items[row]
         output = item.output_path if item.status is Status.DONE else None
-        model_cfg = model_registry[item.model_name].cfg if item.model_name else self._current_cfg()
+        model_cfg = model_registry.config(item.model_name) if item.model_name else self._current_cfg()
         palette = class_palette(model_cfg.classes) if model_cfg.classes else DEFAULT_PALETTE
         try:
             band_order = self._parse_band_order()

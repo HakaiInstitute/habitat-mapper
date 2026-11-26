@@ -158,37 +158,14 @@ def models() -> None:
     table.add_column("Description", style="white")
     table.add_column("Status", style="green")
 
-    # Show only the latest revision of each model
-    model_names = model_registry.list_model_names()
-    for model_name in sorted(model_names):
-        try:
-            # Get the latest revision of this model
-            latest_revision = model_registry.get_latest_revision(model_name)
-            model = model_registry[model_name]  # Gets latest revision
-            cfg = model.cfg
-            is_beta = cfg.beta
-
-            status = _cache_status(cfg)
-
-            table.add_row(
-                f"{model_name}{' [i][red](beta)[/red][/i]' if is_beta else ''}",
-                latest_revision,
-                cfg.description or "No description",
-                status,
-            )
-        except Exception as e:
-            error_panel = Panel(
-                f"[red]Error loading model '{model_name}': {e}[/red]",
-                title="[bold red]Model Error[/bold red]",
-                border_style="red",
-            )
-            console.print(error_panel)
-            table.add_row(
-                model_name,
-                "Error",
-                "Failed to load model configuration",
-                "[red]Error[/red]",
-            )
+    for model_name in model_registry.list_model_names():
+        cfg = model_registry.config(model_name)
+        table.add_row(
+            f"{model_name}{' [i][red](beta)[/red][/i]' if cfg.beta else ''}",
+            cfg.revision,
+            cfg.description or "No description",
+            _cache_status(cfg),
+        )
 
     console.print(table)
 
@@ -212,37 +189,15 @@ def revisions(
     table.add_column("Description", style="white")
     table.add_column("Status", style="green")
 
-    try:
-        # Get all revisions for this model
-        models_by_revision = model_registry._models[model_name]
-        latest_revision = model_registry.get_latest_revision(model_name)
-        revs = list(models_by_revision.keys())
-
-        # Primary: descending date (YYYYMMDD); secondary: no-suffix before variants
-        revs.sort(key=lambda a: (-int(a[:8]), a[8:]))
-
-        for revision in revs:
-            cfg = models_by_revision[revision]
-
-            status = _cache_status(cfg)
-
-            # Mark latest revision
-            is_latest = "✓" if revision == latest_revision else ""
-
-            table.add_row(
-                revision,
-                is_latest,
-                cfg.description or "No description",
-                status,
-            )
-    except Exception as e:
-        error_panel = Panel(
-            f"[red]Error loading revisions for model '{model_name}': {e}[/red]",
-            title="[bold red]Model Error[/bold red]",
-            border_style="red",
+    latest_revision = model_registry.get_latest_revision(model_name)
+    for revision in model_registry.revisions(model_name):
+        cfg = model_registry.config(model_name, revision)
+        table.add_row(
+            revision,
+            "✓" if revision == latest_revision else "",
+            cfg.description or "No description",
+            _cache_status(cfg),
         )
-        console.print(error_panel)
-        return
 
     console.print(table)
 
@@ -439,35 +394,21 @@ def segment(
         ),
     ] = False,
 ) -> None:
-    """Apply a segmentation model to an input raster and save the output.
-
-    Raises:
-        ValueError: If the model has no such revision.
-    """
+    """Apply a segmentation model to an input raster and save the output."""
     if quiet:
         logger.remove()
         logger.add(console.print, level="ERROR", format=_log_formatter, colorize=None)
 
     try:
-        # Handle revision retrieval
-        if revision == "latest":
-            model = model_registry[model_name]  # Gets latest revision
-            actual_revision = model_registry.get_latest_revision(model_name)
-        elif (model_name, revision) in model_registry:
-            model = model_registry[model_name, revision]
-            actual_revision = revision
-        else:
-            # Raised rather than logged, so that `hab segment` exits with an error code scripts can detect
-            raise ValueError(
-                f"Revision {revision} was not found for model {model_name}. "
-                f"Run `hab revisions --model {model_name}` to see the options."
-            )
+        # An unknown revision raises, so that `hab segment` exits with an error code scripts can detect
+        cfg = model_registry.config(model_name, revision)
+        model = cfg.model_cls(cfg)
 
         if not quiet:
             # Show processing info in a panel
             info_panel = Panel(
                 f"[blue]Model:[/blue] {model_name}\n"
-                f"[blue]Revision:[/blue] {actual_revision}\n"
+                f"[blue]Revision:[/blue] {cfg.revision}\n"
                 f"[blue]Input:[/blue] {img_path}\n"
                 f"[blue]Output:[/blue] {Path(output_path).expanduser()}",
                 title="[bold blue]Processing Configuration[/bold blue]",

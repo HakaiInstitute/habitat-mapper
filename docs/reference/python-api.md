@@ -10,6 +10,8 @@ with a model name, or with a `(name, revision)` tuple: `model_registry["kelp-rgb
 
 ::: habitat_mapper.registry.ModelRegistry
 
+::: habitat_mapper.registry.ModelNotFoundError
+
 ## Models
 
 ::: habitat_mapper.ONNXModel

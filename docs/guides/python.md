@@ -13,13 +13,17 @@ All models are available through `model_registry`:
 ```python
 from habitat_mapper import model_registry
 
-model_registry.list_model_names()  # ['kelp-rgb', 'kelp-rgbi', 'mussel-rgb', ...]
+model_registry.list_model_names()  # ['eelgrass-rgb', 'kelp-ps8b', 'kelp-rgb', ...]
 model_registry.list_models()  # [(name, revision), ...]
+model_registry.revisions("kelp-rgb")  # newest first, e.g. ['20240722']
 model_registry.get_latest_revision("kelp-rgb")
+model_registry.config("kelp-rgb")  # the latest revision's ModelConfig, without making a model
 
 model = model_registry["kelp-rgb"]  # latest revision
 model = model_registry["kelp-rgb", "20240722"]  # a specific revision
 ```
+
+An unknown model or revision raises `ModelNotFoundError`, a `KeyError` whose message lists the revisions there are.
 
 Model weights download on first use and are cached for later runs. To download ahead of time, e.g. before working
 offline, or to check what's there, use `model_cache`:
@@ -27,7 +31,7 @@ offline, or to check what's there, use `model_cache`:
 ```python
 from habitat_mapper import model_cache
 
-cfg = model_registry["kelp-rgb"].cfg
+cfg = model_registry.config("kelp-rgb")
 model_cache.is_cached(cfg)  # True once its files are downloaded
 model_cache.fetch(cfg)  # downloads anything missing, and returns the model file's path
 ```

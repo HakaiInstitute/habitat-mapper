@@ -76,10 +76,10 @@ class ModelsDialog(QDialog):
         self._refresh()
 
     def _refresh(self) -> None:
-        names = sorted(model_registry.list_model_names())
+        names = model_registry.list_model_names()
         self._table.setRowCount(len(names))
         for row, name in enumerate(names):
-            cfg = model_registry[name].cfg
+            cfg = model_registry.config(name)
             label = f"{name} {cfg.revision}{' (beta)' if cfg.beta else ''}"
             for column, text in enumerate([
                 label,
@@ -100,7 +100,7 @@ class ModelsDialog(QDialog):
 
         def download() -> None:
             for name in names:
-                model_cache.fetch(model_registry[name].cfg)
+                model_cache.fetch(model_registry.config(name))
 
         self._download.setEnabled(False)
         self._progress.show()
