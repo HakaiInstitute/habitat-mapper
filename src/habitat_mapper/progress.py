@@ -79,16 +79,28 @@ class _RichTask:
 class RichProgressReporter:
     """Rich-backed progress reporter with a default bar layout."""
 
-    def __init__(self) -> None:
-        """Instantiate the underlying Rich Progress bar."""
-        from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+    def __init__(self, transfer: bool = False) -> None:
+        """Instantiate the underlying Rich Progress bar.
 
+        Args:
+            transfer: Show progress in bytes, with the transfer speed, e.g. for downloads.
+        """
+        from rich.progress import (
+            BarColumn,
+            DownloadColumn,
+            Progress,
+            TextColumn,
+            TimeElapsedColumn,
+            TimeRemainingColumn,
+            TransferSpeedColumn,
+        )
+
+        if transfer:
+            columns = (DownloadColumn(), TransferSpeedColumn())
+        else:
+            columns = (TextColumn("[progress.percentage]{task.percentage:>3.0f}%"), TimeElapsedColumn())
         self._progress = Progress(
-            TextColumn("[bold blue]{task.description}"),
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeElapsedColumn(),
-            TimeRemainingColumn(),
+            TextColumn("[bold blue]{task.description}"), BarColumn(), *columns, TimeRemainingColumn()
         )
 
     def __enter__(self) -> Self:

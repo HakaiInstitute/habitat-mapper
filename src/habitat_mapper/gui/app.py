@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
+from pydantic import ValidationError
 from PySide6.QtCore import QObject, QPoint, QProcess, QRectF, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import (
     QAction,
@@ -53,12 +54,20 @@ from PySide6.QtWidgets import (
 
 from habitat_mapper import __version__
 from habitat_mapper.accelerators import select_accelerators
+from habitat_mapper.cache import model_cache
+from habitat_mapper.config import SegmentOptions
 from habitat_mapper.gui import theme
 from habitat_mapper.gui.batch import BatchItem, Status, existing_outputs, output_path_for, output_stem
 from habitat_mapper.gui.canvas import PreviewCanvas
 from habitat_mapper.gui.diagnostics import LOG_DIR, add_log_file, diagnostics_report
-from habitat_mapper.gui.model_info import accepted_inputs, default_band_order, input_description, reads_safe
-from habitat_mapper.gui.models_dialog import ModelsDialog, is_downloaded
+from habitat_mapper.gui.model_info import (
+    accepted_inputs,
+    default_band_order,
+    describe_option_errors,
+    input_description,
+    reads_safe,
+)
+from habitat_mapper.gui.models_dialog import ModelsDialog
 from habitat_mapper.gui.preview import (
     DEFAULT_PALETTE,
     LiveOverlay,
@@ -79,6 +88,7 @@ if TYPE_CHECKING:
     from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDragLeaveEvent, QDropEvent
 
     from habitat_mapper.config import ModelConfig, OutputClass
+    from habitat_mapper.model import ONNXModel
 
 # How often the preview of the image being processed is redrawn
 _LIVE_REFRESH_MS = 200
@@ -206,6 +216,8 @@ class MainWindow(QMainWindow):
         self._items: list[BatchItem] = []
         self._thread: QThread | None = None
         self._worker: SegmentWorker | None = None
+        # The model of the last run, kept so its session stays loaded for the next run with the same model
+        self._loaded_model: ONNXModel | None = None
         self._active_device: str | None = None
         self._preview_request = 0
         # Queue row the preview shows, and the row being processed with its result so far and current tiles
@@ -363,7 +375,7 @@ class MainWindow(QMainWindow):
 
     def _build_model_picker(self) -> QVBoxLayout:
         self._model = QComboBox()
-        for name in sorted(model_registry.list_model_names()):
+        for name in model_registry.list_model_names():
             self._model.addItem(name, name)
         self._model.setAccessibleName("Model")
         self._revision = QComboBox()
@@ -859,17 +871,16 @@ class MainWindow(QMainWindow):
     def _current_cfg(self) -> ModelConfig:
         name = self._model.currentData()
         revision = self._revision.currentText()
-        return (model_registry[name, revision] if revision else model_registry[name]).cfg
+        return model_registry.config(name, revision or "latest")
 
     def _model_changed(self) -> None:
         name = self._model.currentData()
         self._revision.blockSignals(True)
         self._revision.clear()
-        revisions = (revision for model_name, revision in model_registry.list_models() if model_name == name)
-        self._revision.addItems(sorted(revisions, reverse=True))
+        self._revision.addItems(model_registry.revisions(name))
         self._revision.blockSignals(False)
 
-        safe = reads_safe(model_registry[name].cfg)
+        safe = reads_safe(model_registry.config(name))
         self._add_images_button.setVisible(not safe)
         self._add_images_action.setVisible(not safe)
         self._add_safe_button.setVisible(safe)
@@ -890,7 +901,7 @@ class MainWindow(QMainWindow):
         cfg = self._current_cfg()
         self._model_description.setText(cfg.description or "")
         self._model_input.setText(f"Reads: {input_description(cfg)}")
-        if is_downloaded(cfg):
+        if model_cache.is_cached(cfg):
             self._model_download.setText("Downloaded")
             self._model_download.setToolTip("This model can run without an internet connection.")
         else:
@@ -909,30 +920,26 @@ class MainWindow(QMainWindow):
             self._legend_layout.addWidget(QLabel(output_class.name))
             self._legend_layout.addSpacing(8)
 
-    def _options(self) -> dict[str, object]:
-        """Read the advanced options as ImageProcessor.from_model keyword arguments.
+    def _options(self) -> SegmentOptions:
+        """Read the advanced options.
 
         Returns:
-            The keyword arguments.
+            The options.
 
         Raises:
             ValueError: If an option is invalid, with a message for the user.
         """
-        crop_size = self._crop_size.value() or None
-        if crop_size is not None and crop_size % 2:
-            raise ValueError("Tile size must be an even number.")
-        for label, box in [("Median blur", self._blur), ("Morphological filter", self._morph)]:
-            if box.value() and box.value() % 2 == 0:
-                raise ValueError(f"{label} must be an odd number, or off.")
-
-        return {
-            "crop_size": crop_size,
-            # Batches larger than 1 were never faster in testing
-            "batch_size": 1,
-            "blur_kernel_size": self._blur.value(),
-            "morph_kernel_size": self._morph.value(),
-            "band_order": self._parse_band_order(),
-        }
+        try:
+            return SegmentOptions(
+                crop_size=self._crop_size.value() or None,
+                # Batches larger than 1 were never faster in testing
+                batch_size=1,
+                blur_kernel_size=self._blur.value(),
+                morph_kernel_size=self._morph.value(),
+                band_order=self._parse_band_order(),
+            )
+        except ValidationError as e:
+            raise ValueError(describe_option_errors(e)) from None
 
     def _parse_band_order(self) -> list[int] | None:
         """Read the band order option.
@@ -947,12 +954,9 @@ class MainWindow(QMainWindow):
         if not text:
             return None
         try:
-            band_order = [int(band) for band in re.split(r"[\s,]+", text)]
+            return [int(band) for band in re.split(r"[\s,]+", text)]
         except ValueError:
             raise ValueError("Band order must be band numbers separated by commas, e.g. 3, 2, 1.") from None
-        if any(band < 1 for band in band_order):
-            raise ValueError("Band numbers start at 1.")
-        return band_order
 
     # Running
 
@@ -972,7 +976,10 @@ class MainWindow(QMainWindow):
 
         name = self._model.currentData()
         revision = self._revision.currentText()
-        model = model_registry[name, revision]
+        model = self._loaded_model
+        if model is None or (model.name, model.revision) != (name, revision):
+            # Only one model is kept loaded, since each can take a lot of memory
+            model = self._loaded_model = model_registry[name, revision]
 
         # Images already done with this model and output folder aren't run again
         def is_done(item: BatchItem) -> bool:
@@ -1012,7 +1019,7 @@ class MainWindow(QMainWindow):
         if not jobs:
             return
 
-        if not is_downloaded(model.cfg):
+        if not model_cache.is_cached(model.cfg):
             logger.info(f"Downloading {name}. This only happens the first time it's used.")
 
         self._run_total, self._run_started, self._run_output_dir = len(jobs), 0, output_dir
@@ -1045,7 +1052,8 @@ class MainWindow(QMainWindow):
         self._tray.set_status(f"Image {self._run_started} of {self._run_total}", running=True)
 
     def _show_progress(self, done: int, total: int) -> None:
-        self._progress.setRange(0, max(total, 1))
+        # A total of 0 is unknown, e.g. a download without a size, so show a busy bar
+        self._progress.setRange(0, total)
         self._progress.setValue(done)
         fraction = done / total if total else 0.0
         if self._live_row is not None and (cell := self._queue.item(self._live_row, 1)) is not None:
@@ -1143,7 +1151,7 @@ class MainWindow(QMainWindow):
             return
         item = self._items[row]
         output = item.output_path if item.status is Status.DONE else None
-        model_cfg = model_registry[item.model_name].cfg if item.model_name else self._current_cfg()
+        model_cfg = model_registry.config(item.model_name) if item.model_name else self._current_cfg()
         palette = class_palette(model_cfg.classes) if model_cfg.classes else DEFAULT_PALETTE
         try:
             band_order = self._parse_band_order()
@@ -1219,6 +1227,9 @@ def _ensure_std_streams() -> None:
 def main() -> None:
     """Start the desktop app."""
     _ensure_std_streams()
+    # Replace loguru's default handler, which shows debug messages, with one for people running the app from a terminal
+    logger.remove()
+    logger.add(sys.stderr, level="DEBUG" if os.environ.get("DEBUG") else "INFO")
     add_log_file()
     logger.info(f"Starting Habitat-Mapper {__version__}")
 

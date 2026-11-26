@@ -33,7 +33,7 @@ def _make_stub_model(predicted_tiles: list[np.ndarray]) -> MagicMock:
         A mock model whose predictions are appended to ``predicted_tiles``.
     """
 
-    def _predict(batch: np.ndarray) -> np.ndarray:
+    def _predict(batch: np.ndarray, max_pixel_value: float) -> np.ndarray:
         predicted_tiles.extend(batch)
         logits = np.zeros((batch.shape[0], 2, batch.shape[2], batch.shape[3]), dtype=np.float32)
         logits[:, PREDICTED_CLASS] = 1.0
@@ -48,8 +48,8 @@ def _make_stub_model(predicted_tiles: list[np.ndarray]) -> MagicMock:
         default_output_value=DEFAULT_OUTPUT_VALUE,
         nodata_value=255,
     )
-    model._predict.side_effect = _predict
-    model._postprocess.side_effect = lambda data: np.argmax(data, axis=0).astype(np.uint8)
+    model.predict.side_effect = _predict
+    model.postprocess.side_effect = lambda data: np.argmax(data, axis=0).astype(np.uint8)
     return model
 
 
@@ -86,18 +86,14 @@ def test_batches_with_multiple_blank_tiles(tmp_path: Path, batch_size: int) -> N
     processor = ImageProcessor(
         model=_make_stub_model(predicted_tiles),
         config=ProcessingConfig(crop_size=CROP_SIZE, batch_size=batch_size, blur_kernel_size=0, band_order=[1, 2, 3]),
-        reporter_cls=NullProgressReporter,
+        progress=NullProgressReporter,
     )
     processor.run(img_path, out_path)
 
     # Every non-blank tile is predicted exactly once, and no blank tile is sent to the model
     with rasterio.open(img_path) as src:
         windows = list(
-            ImageProcessor._generate_windows(
-                *ImageProcessor._calculate_extended_dimensions(height, width, processor.config),
-                tile_size=CROP_SIZE,
-                stride=processor.config.stride,
-            )
+            ImageProcessor._generate_windows(height, width, tile_size=CROP_SIZE, stride=processor.config.stride)
         )
         tiles = [src.read(window=w, boundless=True, fill_value=0) for w in windows]
     expected = [t for t in tiles if not np.all(t == t.flat[0])]

@@ -36,22 +36,26 @@ class _Session:
         return [np.zeros((1, 2, 8, 8), dtype=np.float32)]
 
 
-@pytest.fixture
-def quiet_calls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[bool]:
-    calls: list[bool] = []
+class _Cache:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.fetches = 0
 
-    def get_local_model_path(self: ModelConfig, quiet: bool = False) -> Path:
-        calls.append(quiet)
-        return tmp_path / "model.onnx"
-
-    monkeypatch.setattr(ModelConfig, "get_local_model_path", get_local_model_path)
-    return calls
+    def fetch(self, cfg: ModelConfig, progress: object = None) -> Path:
+        self.fetches += 1
+        return self.path
 
 
 @pytest.fixture
-def model(monkeypatch: pytest.MonkeyPatch, quiet_calls: list[bool]) -> ONNXModel:
+def cache(tmp_path: Path) -> _Cache:
+    return _Cache(tmp_path / "model.onnx")
+
+
+@pytest.fixture
+def model(monkeypatch: pytest.MonkeyPatch, cache: _Cache) -> ONNXModel:
     monkeypatch.setattr(model_module, "describe_provider", lambda provider: provider)
-    return ONNXModel(ModelConfig(name="stub", revision="20250101", dependencies=[], model_filename="model.onnx"))
+    cfg = ModelConfig(name="stub", revision="20250101", dependencies=[], model_filename="model.onnx")
+    return ONNXModel(cfg, cache=cache)  # type: ignore[arg-type]
 
 
 def _use_sessions(monkeypatch: pytest.MonkeyPatch, sessions: list[_Session]) -> list[set[str]]:
@@ -75,33 +79,43 @@ def test_first_batch_failure_retries_on_the_next_device(model: ONNXModel, monkey
     webgpu = _Session("WebGpuExecutionProvider", fail_on_run=None)
     skips = _use_sessions(monkeypatch, [cuda, webgpu])
     batch = np.zeros((1, 3, 8, 8), dtype=np.uint8)
-    assert model._predict(batch).shape == (1, 2, 8, 8)
-    assert model._predict(batch).shape == (1, 2, 8, 8)
+    assert model.predict(batch, 255).shape == (1, 2, 8, 8)
+    assert model.predict(batch, 255).shape == (1, 2, 8, 8)
     assert skips == [set(), {"CUDAExecutionProvider"}]
     assert (cuda.runs, webgpu.runs) == (1, 2)
 
 
-def test_retry_does_not_log_loading_the_model_again(
-    model: ONNXModel, monkeypatch: pytest.MonkeyPatch, quiet_calls: list[bool]
+def test_retry_does_not_load_the_model_file_again(
+    model: ONNXModel, monkeypatch: pytest.MonkeyPatch, cache: _Cache
 ) -> None:
     _use_sessions(
         monkeypatch,
         [_Session("CUDAExecutionProvider", fail_on_run=1), _Session("WebGpuExecutionProvider", fail_on_run=None)],
     )
-    model._predict(np.zeros((1, 3, 8, 8), dtype=np.uint8))
-    assert quiet_calls == [False, True]
+    model.predict(np.zeros((1, 3, 8, 8), dtype=np.uint8), 255)
+    assert cache.fetches == 1
+
+
+def test_changing_device_loads_a_new_session(model: ONNXModel, monkeypatch: pytest.MonkeyPatch) -> None:
+    skips = _use_sessions(monkeypatch, [_Session("CPUExecutionProvider", fail_on_run=None)])
+    batch = np.zeros((1, 3, 8, 8), dtype=np.uint8)
+    model.predict(batch, 255)
+    model.predict(batch, 255)
+    model.device = "cpu"
+    model.predict(batch, 255)
+    assert len(skips) == 2
 
 
 def test_failure_after_the_first_batch_is_raised(model: ONNXModel, monkeypatch: pytest.MonkeyPatch) -> None:
     # Later failures, e.g. running out of memory, don't mean the device can't run the model
     _use_sessions(monkeypatch, [_Session("CUDAExecutionProvider", fail_on_run=2)])
     batch = np.zeros((1, 3, 8, 8), dtype=np.uint8)
-    model._predict(batch)
+    model.predict(batch, 255)
     with pytest.raises(RuntimeError, match="CUDAExecutionProvider failed"):
-        model._predict(batch)
+        model.predict(batch, 255)
 
 
 def test_cpu_failure_is_raised(model: ONNXModel, monkeypatch: pytest.MonkeyPatch) -> None:
     _use_sessions(monkeypatch, [_Session("CPUExecutionProvider", fail_on_run=1)])
     with pytest.raises(RuntimeError, match="CPUExecutionProvider failed"):
-        model._predict(np.zeros((1, 3, 8, 8), dtype=np.uint8))
+        model.predict(np.zeros((1, 3, 8, 8), dtype=np.uint8), 255)

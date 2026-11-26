@@ -10,6 +10,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
 
+    from pydantic import ValidationError
+
     from habitat_mapper.config import ModelConfig
 
 GEOTIFF_SUFFIXES = (".tif", ".tiff")
@@ -61,3 +63,26 @@ def accepted_inputs(paths: Iterable[Path], safe: bool) -> list[Path]:
     if safe:
         return [path for path in paths if (path.is_dir() and path.suffix.upper() == ".SAFE") or is_safe_zip(path)]
     return [path for path in paths if path.is_file() and path.suffix.lower() in GEOTIFF_SUFFIXES]
+
+
+# Names of the advanced options, as the window labels them
+_OPTION_LABELS = {
+    "crop_size": "Tile size",
+    "blur_kernel_size": "Median blur",
+    "morph_kernel_size": "Morphological filter",
+    "band_order": "Band order",
+}
+
+
+def describe_option_errors(error: ValidationError) -> str:
+    """Describe what is wrong with the advanced options, one line per problem, naming each option.
+
+    Returns:
+        The description, e.g. "Median blur: Must be an odd number, or 0 to turn the filter off."
+    """
+    lines = []
+    for problem in error.errors():
+        field = str(problem["loc"][0]) if problem["loc"] else ""
+        label = _OPTION_LABELS.get(field, field or "Options")
+        lines.append(f"{label}: {problem['msg'].removeprefix('Value error, ')}")
+    return "\n".join(lines)

@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import io
-import itertools
 import os
 import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import humanize
-import platformdirs
 from cyclopts import App, Parameter
 from cyclopts.types import File, PositiveInt  # noqa: TC002
 from loguru import logger
+from pydantic import TypeAdapter, ValidationError
 from rich import box
 from rich.console import Console
 from rich.markup import escape
@@ -24,8 +23,15 @@ from rich.table import Table
 from rich.traceback import install
 
 from habitat_mapper.accelerators import DEVICE_ENV_VAR, Device, find_accelerators, select_accelerators
+from habitat_mapper.cache import model_cache
+from habitat_mapper.config import BandOrder, KernelSize, TileSize
 from habitat_mapper.registry import model_registry
-from habitat_mapper.utils import get_local_model_dir, is_url
+from habitat_mapper.utils import is_url
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from habitat_mapper.config import ModelConfig
 
 app = App(name="hab", help="Habitat segmentation of geospatial imagery with AI.")
 console = Console()
@@ -60,14 +66,18 @@ DEBUG = bool(os.getenv("DEBUG", False))
 # Hide debug and trace messages unless DEBUG is set
 LOG_LEVEL = "TRACE" if DEBUG else "INFO"
 
-# Setup Rich logger handler
-logger.remove()
-logger.add(
-    console.print,
-    level=LOG_LEVEL,
-    format=_log_formatter,
-    colorize=None,
-)
+# The handler main() logs to the console with. Only the command line sets it up, so importing the package as a library
+# leaves the program's own logging alone
+_console_sink: int | None = None
+
+
+def _log_to_console(level: str) -> None:
+    """Log to the console at a level, replacing the console handler this module added before, if any."""
+    global _console_sink  # noqa: PLW0603
+    if _console_sink is not None:
+        logger.remove(_console_sink)
+    _console_sink = logger.add(console.print, level=level, format=_log_formatter, colorize=None)
+
 
 # Set by main(), so that errors give a failing exit code from the command line but not when called from Python
 _exit_on_error = False
@@ -85,32 +95,24 @@ logger_catch = logger.catch(
     onerror=_on_error,
 )
 
-# Install rich traceback formatting
-if DEBUG:
-    install()
 
+def _follows(rule: object) -> Callable[[type, object], None]:
+    """Make a cyclopts validator from one of the option rules in habitat_mapper.config, so both check the same things.
 
-def _positive_even_int_validator(type_: type, value: int | None) -> None:
-    if value is None:
-        pass
-    elif value % 2 == 1 or value <= 0:
-        raise TypeError("Value must be a positive, even number.")
+    Returns:
+        The validator.
+    """
+    adapter = TypeAdapter(rule)
 
+    def validator(type_: type, value: object) -> None:
+        if value is None:
+            return
+        try:
+            adapter.validate_python(value)
+        except ValidationError as e:
+            raise TypeError(e.errors()[0]["msg"].removeprefix("Value error, ")) from None
 
-def _positive_odd_int_or_zero_validator(type_: type, value: int | None) -> None:
-    if value is None:
-        pass
-    elif value == 0:
-        pass
-    elif value % 2 == 0 or value < 0:
-        raise TypeError("Value must be a positive, odd number.")
-
-
-def _band_validator(type_: type, value: list[int] | None) -> None:
-    if value is None:
-        pass
-    elif not all([v >= 1 for v in value]):
-        raise TypeError("All values must be >= 1.")
+    return validator
 
 
 def _existing_model_validator(type_: type, value: str) -> None:
@@ -140,6 +142,12 @@ def _existing_image_validator(type_: type, value: Path | str) -> None:
         raise TypeError(f"Input must be a file or SAFE directory, got: {path}")
 
 
+def _cache_status(cfg: ModelConfig) -> str:
+    if not any(is_url(dep) for dep in cfg.dependencies):
+        return "[green]Local[/green]"
+    return "[green]Cached[/green]" if model_cache.is_cached(cfg) else "[yellow]Available[/yellow]"
+
+
 @app.command
 @logger_catch
 def models() -> None:
@@ -150,47 +158,14 @@ def models() -> None:
     table.add_column("Description", style="white")
     table.add_column("Status", style="green")
 
-    # Show only the latest revision of each model
-    model_names = model_registry.list_model_names()
-    for model_name in sorted(model_names):
-        try:
-            # Get the latest revision of this model
-            latest_revision = model_registry.get_latest_revision(model_name)
-            model = model_registry[model_name]  # Gets latest revision
-            cfg = model.cfg
-            is_beta = cfg.beta
-
-            # Check if model is cached locally
-            # Check if any dependency is a URL
-            has_remote_deps = any(is_url(dep) for dep in cfg.dependencies)
-            if has_remote_deps:
-                # Check if the model file exists in the cache
-                model_dir = get_local_model_dir(cfg.name, cfg.revision)
-                model_file_path = model_dir / cfg.model_filename
-                status = "[green]Cached[/green]" if model_file_path.exists() else "[yellow]Available[/yellow]"
-            else:
-                # All dependencies are local paths
-                status = "[green]Local[/green]"
-
-            table.add_row(
-                f"{model_name}{' [i][red](beta)[/red][/i]' if is_beta else ''}",
-                latest_revision,
-                cfg.description or "No description",
-                status,
-            )
-        except Exception as e:
-            error_panel = Panel(
-                f"[red]Error loading model '{model_name}': {e}[/red]",
-                title="[bold red]Model Error[/bold red]",
-                border_style="red",
-            )
-            console.print(error_panel)
-            table.add_row(
-                model_name,
-                "Error",
-                "Failed to load model configuration",
-                "[red]Error[/red]",
-            )
+    for model_name in model_registry.list_model_names():
+        cfg = model_registry.config(model_name)
+        table.add_row(
+            f"{model_name}{' [i][red](beta)[/red][/i]' if cfg.beta else ''}",
+            cfg.revision,
+            cfg.description or "No description",
+            _cache_status(cfg),
+        )
 
     console.print(table)
 
@@ -214,48 +189,15 @@ def revisions(
     table.add_column("Description", style="white")
     table.add_column("Status", style="green")
 
-    try:
-        # Get all revisions for this model
-        models_by_revision = model_registry._models[model_name]
-        latest_revision = model_registry.get_latest_revision(model_name)
-        revs = list(models_by_revision.keys())
-
-        # Primary: descending date (YYYYMMDD); secondary: no-suffix before variants
-        revs.sort(key=lambda a: (-int(a[:8]), a[8:]))
-
-        for revision in revs:
-            model = models_by_revision[revision]
-            cfg = model.cfg
-
-            # Check if model is cached locally
-            # Check if any dependency is a URL
-            has_remote_deps = any(is_url(dep) for dep in cfg.dependencies)
-            if has_remote_deps:
-                # Check if the model file exists in the cache
-                model_dir = get_local_model_dir(cfg.name, cfg.revision)
-                model_file_path = model_dir / cfg.model_filename
-                status = "[green]Cached[/green]" if model_file_path.exists() else "[yellow]Available[/yellow]"
-            else:
-                # All dependencies are local paths
-                status = "[green]Local[/green]"
-
-            # Mark latest revision
-            is_latest = "✓" if revision == latest_revision else ""
-
-            table.add_row(
-                revision,
-                is_latest,
-                cfg.description or "No description",
-                status,
-            )
-    except Exception as e:
-        error_panel = Panel(
-            f"[red]Error loading revisions for model '{model_name}': {e}[/red]",
-            title="[bold red]Model Error[/bold red]",
-            border_style="red",
+    latest_revision = model_registry.get_latest_revision(model_name)
+    for revision in model_registry.revisions(model_name):
+        cfg = model_registry.config(model_name, revision)
+        table.add_row(
+            revision,
+            "✓" if revision == latest_revision else "",
+            cfg.description or "No description",
+            _cache_status(cfg),
         )
-        console.print(error_panel)
-        return
 
     console.print(table)
 
@@ -296,13 +238,7 @@ def devices() -> None:
 @logger_catch
 def clean() -> None:
     """Clear the Habitat-Mapper model cache to free up space. Models will be re-downloaded as needed."""
-    model_dir = get_local_model_dir()
-
-    # Also find old habitat-mapper files
-    kom_model_dir = Path(platformdirs.user_cache_dir(appname="kelp_o_matic", appauthor="hakai")) / "models"
-
-    # 1. Gather files using the idiomatic list comprehension
-    files = [f for f in itertools.chain(model_dir.rglob("*"), kom_model_dir.glob("*")) if f.is_file()]
+    files = model_cache.files()
 
     if not files:
         panel = Panel(
@@ -313,8 +249,6 @@ def clean() -> None:
         console.print(panel)
         return
 
-    # 2. Sort by size (descending) so user sees largest files first
-    files.sort(key=lambda f: f.stat().st_size, reverse=True)
     total_size = sum(f.stat().st_size for f in files)
 
     # 3. Build a nice table to show the user
@@ -359,11 +293,8 @@ def clean() -> None:
         return
 
     with console.status("[bold red]Deleting files...[/bold red]"):
-        for file in files:
-            try:
-                file.unlink()
-            except OSError as e:
-                logger.warning(f"Could not delete {file}: {e}")
+        for file, error in model_cache.clear():
+            logger.warning(f"Could not delete {file}: {error}")
 
     panel = Panel(
         f"[green]✓ Cleared model cache.\nFreed {humanize.naturalsize(total_size)}[/green]",
@@ -416,7 +347,7 @@ def segment(
         int | None,
         Parameter(
             help="Tile size for processing (must be even). Defaults to the 1024 or to the size required by the model",
-            validator=_positive_even_int_validator,
+            validator=_follows(TileSize),
             name=["--crop-size", "-z"],
         ),
     ] = None,
@@ -424,7 +355,7 @@ def segment(
         int,
         Parameter(
             help="Size of median blur kernel (must be odd, 0 to disable)",
-            validator=_positive_odd_int_or_zero_validator,
+            validator=_follows(KernelSize),
             name=["--blur"],
         ),
     ] = 0,
@@ -432,7 +363,7 @@ def segment(
         int,
         Parameter(
             help="Size of morphological kernel (must be odd, 0 to disable)",
-            validator=_positive_odd_int_or_zero_validator,
+            validator=_follows(KernelSize),
             name=["--morph"],
         ),
     ] = 0,
@@ -440,7 +371,7 @@ def segment(
         list[int] | None,
         Parameter(
             help="Band reordering flag for rearranging bands into RGB(+NIR) order when necessary.",
-            validator=_band_validator,
+            validator=_follows(BandOrder),
             name=["--band", "-b"],
             negative="",
         ),
@@ -463,35 +394,22 @@ def segment(
         ),
     ] = False,
 ) -> None:
-    """Apply a segmentation model to an input raster and save the output.
-
-    Raises:
-        ValueError: If the model has no such revision.
-    """
-    if quiet:
-        logger.remove()
-        logger.add(console.print, level="ERROR", format=_log_formatter, colorize=None)
+    """Apply a segmentation model to an input raster and save the output."""
+    # Quiet only changes the command line's own console handler
+    quiet_console = quiet and _console_sink is not None
+    if quiet_console:
+        _log_to_console("ERROR")
 
     try:
-        # Handle revision retrieval
-        if revision == "latest":
-            model = model_registry[model_name]  # Gets latest revision
-            actual_revision = model_registry.get_latest_revision(model_name)
-        elif (model_name, revision) in model_registry:
-            model = model_registry[model_name, revision]
-            actual_revision = revision
-        else:
-            # Raised rather than logged, so that `hab segment` exits with an error code scripts can detect
-            raise ValueError(
-                f"Revision {revision} was not found for model {model_name}. "
-                f"Run `hab revisions --model {model_name}` to see the options."
-            )
+        # An unknown revision raises, so that `hab segment` exits with an error code scripts can detect
+        cfg = model_registry.config(model_name, revision)
+        model = cfg.model_cls(cfg)
 
         if not quiet:
             # Show processing info in a panel
             info_panel = Panel(
                 f"[blue]Model:[/blue] {model_name}\n"
-                f"[blue]Revision:[/blue] {actual_revision}\n"
+                f"[blue]Revision:[/blue] {cfg.revision}\n"
                 f"[blue]Input:[/blue] {img_path}\n"
                 f"[blue]Output:[/blue] {Path(output_path).expanduser()}",
                 title="[bold blue]Processing Configuration[/bold blue]",
@@ -521,15 +439,19 @@ def segment(
             )
             console.print(success_panel)
     finally:
-        if quiet:
-            logger.remove()
-            logger.add(console.print, level=LOG_LEVEL, format=_log_formatter, colorize=None)
+        if quiet_console:
+            _log_to_console(LOG_LEVEL)
 
 
 def main() -> None:
     """Run the command line interface."""
     global _exit_on_error  # noqa: PLW0603
     _exit_on_error = True
+    # Replace loguru's default handler, which writes to stderr, with the Rich console
+    logger.remove()
+    _log_to_console(LOG_LEVEL)
+    if DEBUG:
+        install()  # Rich tracebacks
     # Output piped on Windows is encoded with the ANSI code page, which can't encode symbols like ✓. Replace them
     # instead of failing
     for stream in (sys.stdout, sys.stderr):

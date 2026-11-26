@@ -137,41 +137,22 @@ class TestWindowGenerationCoverage:
         assert coverage[0, :].min() > 0, "Top edge pixels not covered"
         assert coverage[:, 0].min() > 0, "Left edge pixels not covered"
 
-    def test_extended_dimensions_consistency(self) -> None:
-        """Test that extended dimensions calculation is consistent with window generation."""
+    def test_full_size_tiles_cover_the_image(self) -> None:
+        """Test that full-size tiles, which can extend past the image, cover all of it."""
         test_cases = [
-            (1000, 1000, 512, 256),
-            (768, 1024, 256, 128),
-            (333, 777, 224, 112),
+            (1000, 1000, 512),
+            (768, 1024, 256),
+            (333, 777, 224),
         ]
 
-        for height, width, tile_size, stride in test_cases:
-            config = ProcessingConfig(
-                crop_size=tile_size,
-                batch_size=1,
-                band_order=[1, 2, 3],
-            )
-
-            # Calculate extended dimensions
-            ext_height, ext_width = ImageProcessor._calculate_extended_dimensions(
-                height,
-                width,
-                config,
-            )
-
-            # Generate windows for extended dimensions
+        for height, width, tile_size in test_cases:
+            config = ProcessingConfig(crop_size=tile_size, batch_size=1, band_order=[1, 2, 3])
             windows = list(
-                ImageProcessor._generate_windows(
-                    ext_height, ext_width, tile_size=config.crop_size, stride=config.stride
-                ),
+                ImageProcessor._generate_windows(height, width, tile_size=config.crop_size, stride=config.stride)
             )
 
-            # Validate that windows cover the original image
-            is_covered = _validate_full_coverage(height, width, windows)
-            assert is_covered, (
-                f"Extended dimensions ({ext_height}x{ext_width}) don't provide "
-                f"full coverage for original ({height}x{width})"
-            )
+            assert all(w.height == w.width == tile_size for w in windows)
+            assert _validate_full_coverage(height, width, windows), f"Tiles don't cover {height}x{width}"
 
     def test_window_bounds_validation(self) -> None:
         """Test that all generated windows have valid bounds."""
@@ -207,17 +188,9 @@ class TestWindowGenerationCoverage:
             band_order=[1, 2, 3],
         )
 
-        # Calculate extended dimensions
-        extended_height, extended_width = ImageProcessor._calculate_extended_dimensions(
-            original_height,
-            original_width,
-            config,
-        )
-
-        # Generate windows for extended dimensions
         windows = list(
             ImageProcessor._generate_windows(
-                extended_height, extended_width, tile_size=config.crop_size, stride=config.stride
+                original_height, original_width, tile_size=config.crop_size, stride=config.stride
             ),
         )
 
@@ -257,17 +230,9 @@ class TestWindowGenerationCoverage:
             band_order=[1, 2, 3],
         )
 
-        # Calculate extended dimensions
-        extended_height, extended_width = ImageProcessor._calculate_extended_dimensions(
-            original_height,
-            original_width,
-            config,
-        )
-
-        # Generate windows for extended dimensions
         windows = list(
             ImageProcessor._generate_windows(
-                extended_height, extended_width, tile_size=config.crop_size, stride=config.stride
+                original_height, original_width, tile_size=config.crop_size, stride=config.stride
             ),
         )
 
@@ -296,17 +261,8 @@ class TestWindowGenerationCoverage:
                 band_order=[1, 2, 3],
             )
 
-            # Calculate extended dimensions
-            extended_height, extended_width = ImageProcessor._calculate_extended_dimensions(height, width, config)
-
-            # Generate windows
             windows = list(
-                ImageProcessor._generate_windows(
-                    extended_height,
-                    extended_width,
-                    tile_size=config.crop_size,
-                    stride=config.stride,
-                ),
+                ImageProcessor._generate_windows(height, width, tile_size=config.crop_size, stride=config.stride)
             )
 
             # Verify all windows have the correct size

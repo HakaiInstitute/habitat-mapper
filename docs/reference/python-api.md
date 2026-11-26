@@ -10,6 +10,8 @@ with a model name, or with a `(name, revision)` tuple: `model_registry["kelp-rgb
 
 ::: habitat_mapper.registry.ModelRegistry
 
+::: habitat_mapper.registry.ModelNotFoundError
+
 ## Models
 
 ::: habitat_mapper.ONNXModel
@@ -18,12 +20,32 @@ with a model name, or with a `(name, revision)` tuple: `model_registry["kelp-rgb
         - name
         - revision
         - description
+        - device
         - input_size
+        - active_device
         - process
+        - predict
+        - postprocess
 
 ::: habitat_mapper.ModelConfig
     options:
       show_if_no_docstring: true
+
+::: habitat_mapper.SegmentOptions
+    options:
+      show_if_no_docstring: true
+
+## Processing
+
+::: habitat_mapper.ProcessingObserver
+
+::: habitat_mapper.ProcessingCancelled
+
+## Model cache
+
+`habitat_mapper.model_cache` is the shared `ModelCache` that models download their files to.
+
+::: habitat_mapper.cache.ModelCache
 
 ## Progress reporting
 

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from loguru import logger
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, SignalInstance, Slot
 
 from habitat_mapper.gui.batch import Status
 from habitat_mapper.gui.preview import LiveOverlay, class_palette
-from habitat_mapper.processing import ImageProcessor, ProcessingCancelled
+from habitat_mapper.processing import ProcessingCancelled
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     import numpy as np
     from rasterio.windows import Window
 
+    from habitat_mapper.config import SegmentOptions
     from habitat_mapper.model import ONNXModel
 
 
@@ -94,13 +95,13 @@ class SegmentWorker(QObject):
     tiles_started = Signal(int, object)  # Queue row, tiles being processed in LiveOverlay pixels, past its edges too
     finished = Signal()
 
-    def __init__(self, model: ONNXModel, jobs: list[tuple[int, Path, Path]], options: dict[str, Any]) -> None:
+    def __init__(self, model: ONNXModel, jobs: list[tuple[int, Path, Path]], options: SegmentOptions) -> None:
         """Set up the work.
 
         Args:
-            model: Model to run.
+            model: Model to run. The worker uses it from its own thread, so leave it alone until the worker is done.
             jobs: Queue row, input path and output path of each image.
-            options: Keyword arguments for ImageProcessor.from_model, e.g. crop_size.
+            options: Processing options, e.g. crop_size.
         """
         super().__init__()
         self._model = model
@@ -123,7 +124,8 @@ class SegmentWorker(QObject):
     def _run(self) -> None:
         self.stage.emit(f"Loading {self._model.name}, which is downloaded the first time it is used…")
         try:
-            self._model.cfg.get_local_model_path(quiet=True)
+            # Shows download progress the first time, through the same progress bar as segmenting
+            self._model.cache.fetch(self._model.cfg, lambda: _QtProgressReporter(self.progress))
         except Exception as e:  # noqa: BLE001
             logger.error(f"Could not load {self._model.name}: {e}")
             for row, _, _ in self._jobs:
@@ -139,10 +141,15 @@ class SegmentWorker(QObject):
             self.item_started.emit(row)
             self.stage.emit(f"Segmenting {input_path.name}")
             try:
-                processor = ImageProcessor.from_model(self._model, quiet=True, **self._options)
-                processor.reporter_cls = lambda: _QtProgressReporter(self.progress)
-                observer = _LiveObserver(self, row, self._model.cfg.nodata_value, palette)
-                processor.run(input_path, output_path, cancel=self._cancelled.is_set, observer=observer)
+                self._model.process(
+                    input_path,
+                    output_path,
+                    **self._options.model_dump(),
+                    quiet=True,
+                    progress=lambda: _QtProgressReporter(self.progress),
+                    cancel=self._cancelled.is_set,
+                    observer=_LiveObserver(self, row, self._model.cfg.nodata_value, palette),
+                )
             except ProcessingCancelled:
                 logger.info(f"Cancelled {input_path.name}")
                 self.item_finished.emit(row, Status.CANCELLED, "")
