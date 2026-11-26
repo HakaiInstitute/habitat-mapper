@@ -36,7 +36,8 @@ class ModelRegistry:
     """The configurations of the available models, by name and revision.
 
     Revisions are dates, YYYYMMDD, optionally followed by a variant, e.g. 20250101-small. The latest revision is the
-    newest date, preferring the plain revision over its variants.
+    newest plain (no variant), non-beta revision, so betas and variants are only used when asked for by name. A model
+    with no such revision falls back to its newest revision.
 
     Indexing the registry makes a new model from the configuration each time, so models are never shared between
     callers (or threads).
@@ -100,12 +101,14 @@ class ModelRegistry:
         return sorted(self._configs[name], key=_newest_first)
 
     def get_latest_revision(self, name: str) -> str:
-        """Get the latest revision of a model.
+        """Get the latest revision of a model: the newest plain, non-beta revision, else the newest revision.
 
         Returns:
             Latest revision string. Raises ModelNotFoundError if there is no such model.
         """
-        return self.revisions(name)[0]
+        revisions = self.revisions(name)
+        configs = self._configs[name]
+        return next((r for r in revisions if len(r) == 8 and not configs[r].beta), revisions[0])
 
     def config(self, name: str, revision: str = "latest") -> ModelConfig:
         """Get the configuration of a model revision.
@@ -122,7 +125,7 @@ class ModelRegistry:
         """
         revisions = self.revisions(name)
         if revision == "latest":
-            revision = revisions[0]
+            revision = self.get_latest_revision(name)
         if revision not in revisions:
             raise ModelNotFoundError(
                 f"Revision {revision} was not found for model {name}. Available revisions: {', '.join(revisions)}. "
