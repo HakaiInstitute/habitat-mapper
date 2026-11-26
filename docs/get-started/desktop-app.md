@@ -50,9 +50,10 @@ Download the installer for your computer from the
    whether it's downloaded yet.
 2. Drag GeoTIFFs onto the window, or click **Add GeoTIFFs…**. For the `kelp-skema` model, drag in Sentinel-2 L2A
    `.SAFE` folders or the `.zip` files they download as, or click **Add .SAFE.zip…** or **Add .SAFE…**
-   instead. You can add as many as you like.
-3. Choose an **Output folder**. Each result is saved there named after the image, model and revision, e.g.
-   `survey_kelp_rgb_20240722.tif`.
+   instead. You can add as many as you like. A scene's `.zip` and its extracted `.SAFE` folder would give results
+   with the same name, so only the first one you add is queued.
+3. Choose an **Output folder**. If you haven't chosen one, it's set to the folder of the first image you add. Each
+   result is saved there named after the image, model and revision, e.g. `survey_kelp_rgb_20240722.tif`.
 4. Click **Run**.
 
 The model downloads the first time you use it, which needs an internet connection. To work offline later, download

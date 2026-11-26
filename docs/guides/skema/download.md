@@ -1,8 +1,8 @@
 # Downloading Sentinel-2 Data
 
-The SKeMa kelp models require **Sentinel-2 Level-2A (L2A)** satellite imagery in `.SAFE` folder
-format. This guide walks through acquiring that data from the Copernicus Data Space Ecosystem,
-which provides free access to the full Sentinel-2 archive.
+The SKeMa kelp models require **Sentinel-2 Level-2A (L2A)** satellite imagery, either as the `.zip`
+you download or the `.SAFE` folder inside it. This guide walks through acquiring that data from the
+Copernicus Data Space Ecosystem, which provides free access to the full Sentinel-2 archive.
 
 ## Step 1: Create a Copernicus Data Space Account
 

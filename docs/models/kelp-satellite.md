@@ -5,7 +5,7 @@ Two models map kelp canopy *presence* (not species) in satellite imagery, for re
 | Model               | Use for                                          |
 |---------------------|--------------------------------------------------|
 | `kelp-ps8b`         | PlanetScope 8-band surface reflectance imagery   |
-| `kelp-skema`         | Sentinel-2 Level-2A imagery (`.SAFE` folders)    |
+| `kelp-skema`        | Sentinel-2 Level-2A imagery (`.zip` or `.SAFE`)  |
 
 ## Outputs
 
@@ -55,19 +55,20 @@ SegFormer with a MiT-B3 encoder.
 
 ## `kelp-skema`
 
-SKeMa takes a Sentinel-2 L2A `.SAFE` folder directly. Habitat-Mapper reads the bands it needs from that folder.
+SKeMa takes a Sentinel-2 L2A product directly, either the `.zip` it downloads as or the extracted `.SAFE` folder.
+Habitat-Mapper reads the bands it needs from it without extracting anything.
 
 ```bash
-hab segment kelp-skema /path/to/scene.SAFE kelp.tif
+hab segment kelp-skema /path/to/scene.SAFE.zip kelp.tif
 ```
 
 ### Inputs
 
 - **Data:** a Sentinel-2 Level-2A `.SAFE` folder, or the `.zip` it downloads as. See
   [Download Sentinel-2 Data](../guides/skema/download.md).
-- **Bands:** Blue (B2), Green (B3), Red (B4), NIR (B8) and Red-edge 1 (B5), read automatically from the `.SAFE`
-  folder. The model computes five spectral indices from these bands itself (NDVI, NDWI, GNDVI, CIG and NDVIre), so
-  no other input data is needed.
+- **Bands:** Blue (B2), Green (B3), Red (B4), NIR (B8) and Red-edge 1 (B5), read automatically from the `.zip` or
+  `.SAFE` folder. The model computes five spectral indices from these bands itself (NDVI, NDWI, GNDVI, CIG and
+  NDVIre), so no other input data is needed.
 
 ### Revisions
 

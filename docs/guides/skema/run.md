@@ -20,7 +20,7 @@ example `--rev 20260414`. See [revisions](../../models/kelp-satellite.md#revisio
     [Kelp: Satellite](../../models/kelp-satellite.md#auxiliary-data-models).
 
 !!! tip "Use quotes if the path contains spaces"
-    `hab segment kelp-skema "C:\My Data\scene.SAFE" kelp_output.tif`
+    `hab segment kelp-skema "C:\My Data\scene.SAFE.zip" kelp_output.tif`
 
 ## Several scenes
 
