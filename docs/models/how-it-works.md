@@ -8,7 +8,8 @@ a class, such as kelp, mussels or background.
 Orthomosaics are usually far too large to pass through a neural network in one go, so Habitat-Mapper processes them
 in pieces:
 
-1. **Read in tiles.** The image is read in square windows of `--crop-size` pixels that overlap by 50%. Each window
+1. **Read in tiles.** The image is read in square windows of `--crop-size` pixels that overlap by 50%. Windows at the
+   right and bottom edges reach past the image and are padded with zeros, so every window is full size. Each window
    is reordered to the band order the model expects (see `-b`) and normalised.
 2. **Predict.** Each window goes through the model, `--batch-size` windows at a time, on a GPU if one is available (see `--device`).
 3. **Blend.** Overlapping predictions are blended with a smooth weighting window, so tile edges don't show as seams.
@@ -17,7 +18,8 @@ in pieces:
    `--morph` filters are applied.
 5. **Write.** The output GeoTIFF gets the input's location and coordinate system, so it lines up in GIS.
 
-Pixels marked as nodata in the input are skipped. The models are stored in the portable ONNX format and run with
+Windows where every pixel has the same value, like the empty border around an orthomosaic, skip the model and are
+written as background. The models are stored in the portable ONNX format and run with
 ONNX Runtime, so you don't need a deep learning framework installed.
 
 ## How the models were trained

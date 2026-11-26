@@ -68,6 +68,20 @@ class ImageReader(ABC):
         """
         return None
 
+    @property
+    def profile(self) -> dict[str, object]:
+        """Rasterio profile for writing a GeoTIFF the size of the image, at its location.
+
+        Returns:
+            The profile, which callers may change.
+        """
+        profile: dict[str, object] = {"driver": "GTiff", "height": self.height, "width": self.width}
+        if self.crs is not None:
+            profile["crs"] = self.crs
+        if self.transform is not None:
+            profile["transform"] = self.transform
+        return profile
+
     @abstractmethod
     def read_window(
         self,
@@ -181,8 +195,12 @@ class TIFFReader(ImageReader):
 
     @property
     def profile(self) -> dict[str, object]:
-        """Full rasterio profile for the dataset."""
-        return self._src.profile
+        """Full rasterio profile for the dataset, e.g. to keep its tiling in the output.
+
+        Returns:
+            A copy of the profile, which callers may change.
+        """
+        return dict(self._src.profile)
 
     def read_window(
         self,

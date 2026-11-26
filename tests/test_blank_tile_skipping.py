@@ -93,11 +93,7 @@ def test_batches_with_multiple_blank_tiles(tmp_path: Path, batch_size: int) -> N
     # Every non-blank tile is predicted exactly once, and no blank tile is sent to the model
     with rasterio.open(img_path) as src:
         windows = list(
-            ImageProcessor._generate_windows(
-                *ImageProcessor._calculate_extended_dimensions(height, width, processor.config),
-                tile_size=CROP_SIZE,
-                stride=processor.config.stride,
-            )
+            ImageProcessor._generate_windows(height, width, tile_size=CROP_SIZE, stride=processor.config.stride)
         )
         tiles = [src.read(window=w, boundless=True, fill_value=0) for w in windows]
     expected = [t for t in tiles if not np.all(t == t.flat[0])]

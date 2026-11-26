@@ -57,7 +57,7 @@ Python: `batch_size=4`.
 ## Smoothing the output
 
 Two optional filters clean up speckle in the output. Both are off by default (`0`) and take an **odd** kernel size
-in pixels.
+in pixels. A size of 1 has no effect, so start at 3.
 
 | Option    | Effect                                                                     | Python              |
 |-----------|----------------------------------------------------------------------------|---------------------|

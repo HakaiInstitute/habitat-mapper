@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import cv2
 import numpy as np
@@ -23,6 +23,15 @@ if TYPE_CHECKING:
 
     from habitat_mapper.config import ModelConfig
     from habitat_mapper.reader import ImageReader
+
+
+def _tile_count(size: int, tile_size: int, stride: int) -> int:
+    """Count the tiles needed along one side of an image for the last tile to reach its end.
+
+    Returns:
+        The number of tiles.
+    """
+    return 1 if size <= tile_size else math.ceil((size - tile_size) / stride) + 1
 
 
 class ProcessingCancelled(Exception):  # noqa: N818
@@ -167,34 +176,20 @@ class ImageProcessor:
             if observer is not None:
                 observer.image_started(height, width)
 
-            # For TIFF, we can get the profile; for other formats, create a minimal one
-            try:
-                from habitat_mapper.reader import TIFFReader
-
-                if isinstance(reader, TIFFReader):
-                    profile = reader.profile.copy()
-                else:
-                    profile = self._create_profile_from_reader(reader)
-            except ImportError:
-                profile = self._create_profile_from_reader(reader)
-
             max_pixel_value = self.model.cfg.max_pixel_value_for(dtype)
 
-            # Update profile for output
-            profile.update({"dtype": "uint8", "count": 1, "compress": "lzw", "nodata": self.model.cfg.nodata_value})
+            # The output has the input's size and location, with one band of class values
+            profile = {
+                **reader.profile,
+                "dtype": "uint8",
+                "count": 1,
+                "compress": "lzw",
+                "nodata": self.model.cfg.nodata_value,
+            }
 
-            # Calculate extended dimensions to accommodate full tiles
-            extended_height, extended_width = self._calculate_extended_dimensions(
-                height,
-                width,
-                self.config,
-            )
-
-            # Generate tiles and process in batches
+            # Full-size tiles, which can extend past the bottom and right of the image. They are read boundless
             windows = list(
-                self._generate_windows(
-                    extended_height, extended_width, tile_size=self.config.crop_size, stride=self.config.stride
-                ),
+                self._generate_windows(height, width, tile_size=self.config.crop_size, stride=self.config.stride)
             )
 
             window_batches = list(batched(windows, n=self.config.batch_size))
@@ -283,31 +278,6 @@ class ImageProcessor:
 
             # Apply final post-processing
             self._apply_final_postprocessing(output_path)
-
-    def _create_profile_from_reader(self, reader: ImageReader) -> dict[str, Any]:
-        """Create a rasterio profile from an ImageReader.
-
-        Args:
-            reader: ImageReader instance to extract properties from
-
-        Returns:
-            Dictionary suitable for rasterio profile
-        """
-        profile = {
-            "driver": "GTiff",
-            "height": reader.height,
-            "width": reader.width,
-            "count": 1,
-            "dtype": "uint8",
-        }
-
-        # Add CRS and transform if available
-        if reader.crs is not None:
-            profile["crs"] = reader.crs
-        if reader.transform is not None:
-            profile["transform"] = reader.transform
-
-        return profile
 
     def _load_batch(
         self,
@@ -400,13 +370,10 @@ class ImageProcessor:
 
                         # Apply median blur (key for quality improvement)
                         if self.config.apply_median_blur:
-                            blur_size = self.config.blur_kernel_size
-                            if blur_size % 2 == 0:
-                                blur_size += 1  # Ensure odd size
-                            tile_data = cv2.medianBlur(tile_data, blur_size)
+                            tile_data = cv2.medianBlur(tile_data, self.config.blur_kernel_size)
 
                         # Apply morphological operations if enabled
-                        if self.config.morph_kernel_size > 0:
+                        if self.config.apply_morphological_ops:
                             kernel_size = self.config.morph_kernel_size
                             kernel = np.ones((kernel_size, kernel_size), np.uint8)
 
@@ -458,42 +425,6 @@ class ImageProcessor:
         )
 
     @staticmethod
-    def _calculate_extended_dimensions(
-        height: int,
-        width: int,
-        config: ProcessingConfig,
-    ) -> tuple[int, int]:
-        """Calculate extended dimensions to fit complete tiles.
-
-        Args:
-            height: Original height of the image.
-            width: Original width of the image.
-            config: Processing configuration.
-
-        Returns:
-            Tuple of (extended_height, extended_width) that ensures full tile coverage.
-        """
-        tile_size = config.crop_size
-        stride = config.stride
-
-        # Calculate number of tiles needed using same logic as _generate_windows
-        if height <= tile_size:
-            tiles_y = 1
-        else:
-            tiles_y = math.ceil((height - tile_size) / stride) + 1
-
-        if width <= tile_size:
-            tiles_x = 1
-        else:
-            tiles_x = math.ceil((width - tile_size) / stride) + 1
-
-        # Calculate extended dimensions to ensure full coverage
-        extended_height = (tiles_y - 1) * stride + tile_size
-        extended_width = (tiles_x - 1) * stride + tile_size
-
-        return max(extended_height, height), max(extended_width, width)
-
-    @staticmethod
     def _generate_windows(
         height: int,
         width: int,
@@ -514,20 +445,8 @@ class ImageProcessor:
         Yields:
             Window objects for each tile.
         """
-        # Calculate number of tiles needed to ensure full coverage
-        # Use ceiling division to handle cases where dimensions don't align perfectly with stride
-        if height <= tile_size:
-            tiles_y = 1
-        else:
-            tiles_y = math.ceil((height - tile_size) / stride) + 1
-
-        if width <= tile_size:
-            tiles_x = 1
-        else:
-            tiles_x = math.ceil((width - tile_size) / stride) + 1
-
-        for y in range(tiles_y):
-            for x in range(tiles_x):
+        for y in range(_tile_count(height, tile_size, stride)):
+            for x in range(_tile_count(width, tile_size, stride)):
                 row_start = y * stride
                 col_start = x * stride
 
