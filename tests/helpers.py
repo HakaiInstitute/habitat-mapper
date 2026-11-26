@@ -10,7 +10,10 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import numpy as np
+import onnx
 import rasterio
+import requests
+from onnx import TensorProto, helper, numpy_helper
 from rasterio.transform import from_origin
 
 from habitat_mapper.config import ModelConfig
@@ -45,6 +48,28 @@ def write_raster(path: Path, data: np.ndarray, pixel_size: float = 1) -> Path:
     ) as dst:
         dst.write(data)
     return path
+
+
+class FakeResponse:
+    """Stands in for the response of requests.get(..., stream=True)."""
+
+    def __init__(self, body: bytes, length: int | None = None, status: int = 200) -> None:
+        self.body = body
+        self.headers = {"content-length": str(len(body) if length is None else length)}
+        self.status = status
+
+    def __enter__(self) -> FakeResponse:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        pass
+
+    def raise_for_status(self) -> None:
+        if self.status >= 400:
+            raise requests.HTTPError(f"{self.status} error")
+
+    def iter_content(self, chunk_size: int) -> list[bytes]:
+        return [self.body[i : i + chunk_size] for i in range(0, len(self.body), chunk_size)]
 
 
 def make_stub_model(
@@ -141,3 +166,47 @@ def zip_folder(folder: Path, zip_path: Path, inside: str) -> Path:
         for path in sorted(folder.rglob("*")):
             archive.write(path, f"{inside}{path.relative_to(folder).as_posix()}")
     return zip_path
+
+
+def write_tiny_model(path: Path) -> Path:
+    """Write a 1x1 convolution that scores class 1 where the first band is brighter than the second, else class 0.
+
+    Its height and width are left unnamed, which ONNX Runtime reports as None.
+
+    Returns:
+        The model's path.
+    """
+    # Class 0 scores band 2 - band 1, class 1 scores band 1 - band 2
+    weights = numpy_helper.from_array(np.array([[-1, 1, 0], [1, -1, 0]], dtype=np.float32).reshape(2, 3, 1, 1), "w")
+    graph = helper.make_graph(
+        [helper.make_node("Conv", ["input", "w"], ["output"])],
+        "tiny",
+        [helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch", 3, None, None])],
+        [helper.make_tensor_value_info("output", TensorProto.FLOAT, ["batch", 2, None, None])],
+        initializer=[weights],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+    model.ir_version = 9
+    onnx.checker.check_model(model)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    onnx.save(model, path)
+    return path
+
+
+def tiny_model_config(path: Path, name: str = "tiny") -> ModelConfig:
+    """Configure the model write_tiny_model wrote, so its classes are whichever of bands 1 and 2 is brighter.
+
+    Returns:
+        The configuration.
+    """
+    return ModelConfig(
+        name=name,
+        revision="20250101",
+        dependencies=[str(path)],
+        model_filename=path.name,
+        # The same for every band, so normalizing keeps whichever band is brighter
+        mean=(0.5, 0.5, 0.5),
+        std=(0.25, 0.25, 0.25),
+        default_output_value=0,
+        nodata_value=255,
+    )

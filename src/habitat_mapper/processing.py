@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import cv2
 import numpy as np
@@ -19,7 +19,7 @@ from habitat_mapper.progress import NullProgressReporter, ProgressReporter
 from habitat_mapper.utils import batched
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterable, Sequence
+    from collections.abc import Callable, Generator, Iterable, Iterator, Sequence
 
     from habitat_mapper.config import ModelConfig
     from habitat_mapper.reader import ImageReader
@@ -180,22 +180,12 @@ class ImageProcessor:
         cancel: Callable[[], bool] | None,
         observer: ProcessingObserver | None,
     ) -> None:
-        """Process a raster file with tiled segmentation. See run.
-
-        Raises:
-            ProcessingCancelled: If cancel returned True.
-        """
-        register = None
-
+        """Process a raster file with tiled segmentation. See run."""
         # Instantiate the image reader using model configuration
         with self.model.cfg.get_reader(img_path) as reader:
             # Get raster properties
-            height, width = reader.height, reader.width
-            dtype = reader.dtype
             if observer is not None:
-                observer.image_started(height, width)
-
-            max_pixel_value = self.model.cfg.max_pixel_value_for(dtype)
+                observer.image_started(reader.height, reader.width)
 
             # The output has the input's size and location, with one band of class values
             profile = {
@@ -206,97 +196,130 @@ class ImageProcessor:
                 "nodata": self.model.cfg.nodata_value,
             }
 
-            # Full-size tiles, which can extend past the bottom and right of the image. They are read boundless
-            windows = list(
-                self._generate_windows(height, width, tile_size=self.config.crop_size, stride=self.config.stride)
-            )
+            # With filters on, the model's result goes to a temporary file that the filters then read from, so that
+            # each filter tile sees only unfiltered pixels
+            overlap = self._filter_overlap()
+            output_path = Path(output_path)
+            segmented_path = output_path.with_name(f".{output_path.stem}.unfiltered{output_path.suffix}")
+            if not overlap:
+                segmented_path = output_path
 
-            window_batches = list(batched(windows, n=self.config.batch_size))
+            try:
+                self._segment(reader, segmented_path, profile, cancel, observer)
+                if overlap:
+                    self._apply_final_postprocessing(segmented_path, output_path, overlap, observer)
+            finally:
+                if segmented_path != output_path:
+                    segmented_path.unlink(missing_ok=True)
 
-            with rasterio.open(output_path, "w", **profile) as dst:
-                with self.progress() as reporter:
-                    task = reporter.add_task("Segmenting", total=len(window_batches))
-                    for window_batch in window_batches:
-                        if cancel is not None and cancel():
-                            raise ProcessingCancelled
-                        if observer is not None:
-                            observer.batch_started(window_batch)
+    def _segment(
+        self,
+        reader: ImageReader,
+        output_path: Path,
+        profile: dict[str, Any],
+        cancel: Callable[[], bool] | None,
+        observer: ProcessingObserver | None,
+    ) -> None:
+        """Segment the image tile by tile, blending overlapping tiles, and write the class of each pixel.
 
-                        # Read tile data from source raster
-                        input_batch = self._load_batch(reader, window_batch)
+        Raises:
+            ProcessingCancelled: If cancel returned True.
+        """
+        register = None
+        height, width = reader.height, reader.width
+        max_pixel_value = self.model.cfg.max_pixel_value_for(reader.dtype)
 
-                        # Shortcut to write the default value if all pixels have the same value in each img
-                        blank = np.array([np.all(img == img.flat[0]) for img in input_batch], dtype=bool)
-                        for window in (w for w, b in zip(window_batch, blank) if b):
-                            clipped_window = self._clip_window_to_image_bounds(window, height, width)
+        # Full-size tiles, which can extend past the bottom and right of the image. They are read boundless
+        windows = list(
+            self._generate_windows(height, width, tile_size=self.config.crop_size, stride=self.config.stride)
+        )
+        window_batches = list(batched(windows, n=self.config.batch_size))
 
-                            # Skip windows that are completely outside the image bounds
-                            if clipped_window is not None:
-                                data = np.full(
-                                    (clipped_window.height, clipped_window.width),
-                                    self.model.cfg.default_output_value,
-                                    dtype=np.uint8,
-                                )
-                                dst.write(data, 1, window=clipped_window)
-                                if observer is not None:
-                                    observer.written(clipped_window, data)
+        with rasterio.open(output_path, "w", **profile) as dst:
+            with self.progress() as reporter:
+                task = reporter.add_task("Segmenting", total=len(window_batches))
+                for window_batch in window_batches:
+                    if cancel is not None and cancel():
+                        raise ProcessingCancelled
+                    if observer is not None:
+                        observer.batch_started(window_batch)
 
-                        # Remove blank tiles from batch
-                        window_batch = tuple(w for w, b in zip(window_batch, blank) if not b)
-                        input_batch = input_batch[~blank]
+                    # Read tile data from source raster
+                    input_batch = self._load_batch(reader, window_batch)
 
-                        # If all windows were removed, skip processing and update progress
-                        if len(window_batch) == 0:
-                            task.update(advance=1)
-                            continue
+                    # Tiles of one flat value have nothing to segment, so they aren't sent to the model
+                    blank = np.array([np.all(img == img.flat[0]) for img in input_batch], dtype=bool)
+                    predictions = iter(
+                        self.model.predict(input_batch[~blank], max_pixel_value) if not blank.all() else ()
+                    )
 
-                        # Process batch through model
-                        result_batch = self.model.predict(input_batch, max_pixel_value)
-
-                        if register is None:
-                            num_classes = result_batch.shape[1]
+                    for window, is_blank in zip(window_batch, blank, strict=True):
+                        model_output = None if is_blank else next(predictions)
+                        if register is None and model_output is not None:
                             register = NumpyMemoryRegister(
                                 image_width=width,
-                                register_depth=num_classes,
+                                # One more than the classes, to count how much of each pixel tiles covered
+                                register_depth=model_output.shape[0] + 1,
                                 window_size=self.config.crop_size,
                                 kernel=BartlettHannKernel,
                             )
-
-                        # Apply post-processing to each result
-                        for read_window, model_output in zip(
-                            window_batch,
-                            result_batch,
-                            strict=False,
-                        ):
-                            clipped_window = self._clip_window_to_image_bounds(read_window, height, width)
-
-                            # Skip windows that are completely outside the image bounds
-                            if clipped_window is None:
-                                continue
-
-                            # Edge detection based on clipped window
-                            is_top = clipped_window.row_off == 0
-                            is_bottom = clipped_window.row_off + clipped_window.height >= height
-                            is_left = clipped_window.col_off == 0
-                            is_right = clipped_window.col_off + clipped_window.width >= width
-
-                            data, write_window = register._step(
-                                model_output,
-                                clipped_window,
-                                top=is_top,
-                                bottom=is_bottom,
-                                left=is_left,
-                                right=is_right,
-                            )
-                            data = self.model.postprocess(data)
+                        for write_window, data in self._blend(register, window, model_output, height, width):
                             dst.write(data, 1, window=write_window)
                             if observer is not None:
                                 observer.written(write_window, data)
 
-                        task.update(advance=1)
+                    task.update(advance=1)
 
-            # Apply final post-processing
-            self._apply_final_postprocessing(output_path, observer)
+    def _blend(
+        self,
+        register: NumpyMemoryRegister | None,
+        window: Window,
+        model_output: np.ndarray | None,
+        height: int,
+        width: int,
+    ) -> Iterator[tuple[Window, np.ndarray]]:
+        """Blend one tile's class scores with its neighbours', and yield the parts of the result that are now final.
+
+        Every tile must be passed in order, blank or not, as the register expects the tiles in rows at half-tile
+        steps. A blank tile adds nothing to the pixels it covers. Pixels no tile with something to segment covered
+        get the model's default output value.
+
+        Args:
+            register: Holds the blended scores, or None if no tile so far had anything to segment.
+            window: The tile, which can extend past the bottom and right of the image.
+            model_output: The model's scores for the tile, or None if the tile is blank.
+            height: Height of the image.
+            width: Width of the image.
+
+        Yields:
+            Windows of the output and their class values.
+        """
+        clipped_window = self._clip_window_to_image_bounds(window, height, width)
+        if clipped_window is None:
+            return
+        default = self.model.cfg.default_output_value
+
+        if register is None:
+            # Only blank tiles so far, so nothing to blend
+            yield clipped_window, np.full((clipped_window.height, clipped_window.width), default, dtype=np.uint8)
+            return
+
+        if model_output is None:
+            scores = np.zeros((register.n, window.height, window.width), dtype=np.float32)
+        else:
+            coverage = np.ones((1, *model_output.shape[1:]), dtype=model_output.dtype)
+            scores = np.concatenate([model_output, coverage])
+
+        blended, write_window = register._step(
+            scores,
+            clipped_window,
+            top=clipped_window.row_off == 0,
+            bottom=clipped_window.row_off + clipped_window.height >= height,
+            left=clipped_window.col_off == 0,
+            right=clipped_window.col_off + clipped_window.width >= width,
+        )
+        classes = self.model.postprocess(blended[:-1])
+        yield write_window, np.where(blended[-1] > 0, classes, default).astype(np.uint8)
 
     def _load_batch(
         self,
@@ -341,83 +364,64 @@ class ImageProcessor:
         # Stack into batch array [b, c, h, w]
         return np.stack(tile_data, axis=0)
 
+    def _filter_overlap(self) -> int:
+        """How far a filtered pixel can depend on its neighbours, so how much filter tiles must overlap.
+
+        The median blur reaches out by its radius. Opening and then closing apply four erosions and dilations, each
+        reaching out by the morphological kernel's radius.
+
+        Returns:
+            The distance in pixels, or 0 if no filter is on.
+        """
+        blur = (self.config.blur_kernel_size - 1) // 2 if self.config.apply_median_blur else 0
+        morph = (self.config.morph_kernel_size - 1) // 2 if self.config.apply_morphological_ops else 0
+        return blur + 4 * morph
+
     def _apply_final_postprocessing(
         self,
-        dst_path: str | Path,
+        src_path: Path,
+        dst_path: Path,
+        overlap: int,
         observer: ProcessingObserver | None = None,
     ) -> None:
-        """Apply final post-processing using tiled approach for large rasters.
+        """Filter the segmented result in overlapping tiles, giving the same result as filtering it whole.
 
         Args:
-            dst_path: Destination rasterio dataset writer.
+            src_path: The unfiltered result.
+            dst_path: Where to write the filtered result.
+            overlap: How far a filtered pixel depends on its neighbours. See `_filter_overlap`.
             observer: Told about each tile being filtered and each filtered part as it is written.
         """
-        if not (self.config.apply_median_blur or self.config.apply_morphological_ops):
-            return  # No processing needed
+        with rasterio.open(src_path) as src, rasterio.open(dst_path, "w", **src.profile) as dst:
+            height, width = src.height, src.width
 
-        # Calculate required overlap for operations
-        blur_overlap = (self.config.blur_kernel_size - 1) // 2 if self.config.apply_median_blur else 0
-        morph_overlap = (self.config.morph_kernel_size - 1) // 2 if self.config.apply_morphological_ops else 0
-        overlap = max(blur_overlap, morph_overlap)
-
-        if overlap == 0:
-            return
-
-        # Process in tiles with overlap
-        with rasterio.open(str(dst_path), "r+") as dst:
-            height, width = dst.height, dst.width
-
-            # Use smaller tiles for post-processing to manage memory
-            tile_size = min(512, self.config.crop_size)
-            # Calculate stride to create overlapping tiles
+            # Small tiles keep memory use down, but each must be wider than the overlap at both of its sides
+            tile_size = max(min(512, self.config.crop_size), 4 * overlap)
             stride = tile_size - 2 * overlap
+            windows = list(self._generate_windows(height, width, tile_size=tile_size, stride=stride, boundless=False))
 
-            # Generate overlapping windows for post-processing
-            windows = self._generate_windows(
-                height,
-                width,
-                tile_size=tile_size,
-                stride=stride,
-                boundless=False,
-            )
+            with self.progress() as reporter:
+                task = reporter.add_task("Filtering", total=len(windows))
+                for window in windows:
+                    if observer is not None:
+                        observer.batch_started([window])
+                    tile_data = src.read(1, window=window)
 
-            windows_list = list(windows)
-            if windows_list:  # Only show progress if there are windows to process
-                with self.progress() as reporter:
-                    task = reporter.add_task("Filtering", total=len(windows_list))
-                    for window in windows_list:
-                        if observer is not None:
-                            observer.batch_started([window])
-                        # Read tile with overlap
-                        tile_data = dst.read(1, window=window)
+                    if self.config.apply_median_blur:
+                        tile_data = cv2.medianBlur(tile_data, self.config.blur_kernel_size)
 
-                        # Apply median blur (key for quality improvement)
-                        if self.config.apply_median_blur:
-                            tile_data = cv2.medianBlur(tile_data, self.config.blur_kernel_size)
+                    if self.config.apply_morphological_ops:
+                        kernel_size = self.config.morph_kernel_size
+                        kernel = np.ones((kernel_size, kernel_size), np.uint8)
+                        # Opening removes specks, then closing fills gaps
+                        tile_data = cv2.morphologyEx(tile_data, cv2.MORPH_OPEN, kernel)
+                        tile_data = cv2.morphologyEx(tile_data, cv2.MORPH_CLOSE, kernel)
 
-                        # Apply morphological operations if enabled
-                        if self.config.apply_morphological_ops:
-                            kernel_size = self.config.morph_kernel_size
-                            kernel = np.ones((kernel_size, kernel_size), np.uint8)
-
-                            # Opening (remove noise)
-                            tile_data = cv2.morphologyEx(
-                                tile_data,
-                                cv2.MORPH_OPEN,
-                                kernel,
-                            )
-                            # Closing (fill gaps)
-                            tile_data = cv2.morphologyEx(
-                                tile_data,
-                                cv2.MORPH_CLOSE,
-                                kernel,
-                            )
-
-                        # Place result, removing overlap except at boundaries
-                        write_window, written = self._place_window_result(dst, window, tile_data, overlap)
-                        if observer is not None:
-                            observer.written(write_window, written)
-                        task.update(advance=1)
+                    # Keep only the part of the tile far enough from its edges, except at the image's edges
+                    write_window, written = self._place_window_result(dst, window, tile_data, overlap)
+                    if observer is not None:
+                        observer.written(write_window, written)
+                    task.update(advance=1)
 
     @staticmethod
     def _clip_window_to_image_bounds(

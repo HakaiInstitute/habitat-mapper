@@ -72,7 +72,8 @@ def softmax(x: np.ndarray, axis: int = 0, keepdims: bool = False) -> np.ndarray:
     Returns:
         A numpy array representing the softmax output
     """
-    ex = np.exp(x)
+    # Subtracting the largest score changes nothing but keeps exp from overflowing
+    ex = np.exp(x - np.max(x, axis=axis, keepdims=True))
     return ex / np.sum(ex, axis=axis, keepdims=keepdims)
 
 
@@ -85,5 +86,5 @@ def sigmoid(x: np.ndarray) -> np.ndarray:
     Returns:
         A numpy array of the sigmoid output
     """
-    ex = np.exp(x)
-    return ex / (1 + ex)
+    # Written with tanh, as exp overflows for large scores
+    return 0.5 * (1 + np.tanh(0.5 * x))

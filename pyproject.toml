@@ -53,6 +53,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "diff-cover>=11.0.4",
     "mutmut>=3.8.1",
+    "onnx>=1.23.2",
 ]
 docs = [
     "mkdocstrings-python>=1.19.0",
@@ -68,6 +69,9 @@ examples = [
 ]
 freeze = [
     "pyinstaller>=6.22.3",
+]
+gui-tests = [
+    "pytest-qt>=4.5.0",
 ]
 
 [project.urls]
@@ -153,8 +157,9 @@ omit = [
 ]
 
 [tool.coverage.report]
-# A ratchet, not a target: raise this when coverage goes up so it can't quietly fall back
-fail_under = 41
+# A ratchet, not a target: raise this when coverage goes up so it can't quietly fall back. Measured with the gui extra
+# and gui-tests group installed, as CI's coverage job does
+fail_under = 80
 skip_covered = true
 show_missing = true
 exclude_also = [
