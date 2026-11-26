@@ -1,6 +1,6 @@
 [project]
 name = "habitat-mapper"
-version = "0.18.0b2"
+version = "0.18.0b3"
 description = "Habitat segmentation with AI"
 readme = "README.md"
 authors = [{ name = "Taylor Denouden", email = "taylor.denouden@hakai.org" }]
