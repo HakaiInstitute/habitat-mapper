@@ -49,8 +49,8 @@ Download the installer for your computer from the
    **Revision** of the model is chosen for you. Under the model, the app shows what imagery it's for and
    whether it's downloaded yet.
 2. Drag GeoTIFFs onto the window, or click **Add GeoTIFFs…**. For the `kelp-skema` model, drag in Sentinel-2 L2A
-   `.SAFE` folders or the `.zip` files they download as, or click **Add SAFE folder…** or **Add SAFE zips…**
-   instead. You can add as many as you like.
+   `.SAFE` folders or the `.zip` files they download as, or click **Add Sentinel-2…** and choose
+   **Zip downloads…** or **Extracted .SAFE folder…** instead. You can add as many as you like.
 3. Choose an **Output folder**. Each result is saved there named after the image, model and revision, e.g.
    `survey_kelp_rgb_20240722.tif`.
 4. Click **Run**.

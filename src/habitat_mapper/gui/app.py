@@ -238,13 +238,14 @@ class MainWindow(QMainWindow):
         self._add_images_action = QAction("Add GeoTIFFs…", self)
         self._add_images_action.setShortcut(QKeySequence.StandardKey.Open)
         self._add_images_action.triggered.connect(self._add_images)
-        self._add_safe_action = QAction("Add Sentinel-2 SAFE folder…", self)
-        self._add_safe_action.triggered.connect(self._add_safe_folder)
-        self._add_safe_zip_action = QAction("Add Sentinel-2 SAFE zips…", self)
+        self._add_safe_zip_action = QAction("Add Sentinel-2 zip downloads…", self)
+        self._add_safe_zip_action.setShortcut(QKeySequence.StandardKey.Open)
         self._add_safe_zip_action.triggered.connect(self._add_safe_zips)
+        self._add_safe_action = QAction("Add extracted Sentinel-2 .SAFE folder…", self)
+        self._add_safe_action.triggered.connect(self._add_safe_folder)
         file_menu.addAction(self._add_images_action)
-        file_menu.addAction(self._add_safe_action)
         file_menu.addAction(self._add_safe_zip_action)
+        file_menu.addAction(self._add_safe_action)
         file_menu.addSeparator()
         quit_action = QAction("Quit", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
@@ -416,14 +417,18 @@ class MainWindow(QMainWindow):
         self._queue.customContextMenuRequested.connect(self._queue_menu)
         self._queue.cellDoubleClicked.connect(self._open_row)
 
-        # Only the add buttons for what the model reads are shown
+        # Only one of the add buttons is shown, depending on what the model reads. Sentinel-2 products come as zips or
+        # extracted folders, which need different file dialogs, so its button offers both from a menu
         self._add_images_button = QPushButton("Add GeoTIFFs…")
         self._add_images_button.clicked.connect(self._add_images)
-        self._add_safe_button = QPushButton("Add SAFE folder…")
-        self._add_safe_button.clicked.connect(self._add_safe_folder)
-        self._add_safe_zip_button = QPushButton("Add SAFE zips…")
-        self._add_safe_zip_button.setToolTip("Add Sentinel-2 .SAFE products as downloaded, without extracting them")
-        self._add_safe_zip_button.clicked.connect(self._add_safe_zips)
+        add_safe_menu = QMenu(self)
+        add_zips = add_safe_menu.addAction("Zip downloads…")
+        add_zips.setToolTip("Sentinel-2 products as downloaded, without extracting them")
+        add_zips.triggered.connect(self._add_safe_zips)
+        add_safe_menu.addAction("Extracted .SAFE folder…").triggered.connect(self._add_safe_folder)
+        add_safe_menu.setToolTipsVisible(True)
+        self._add_safe_button = QPushButton("Add Sentinel-2…")
+        self._add_safe_button.setMenu(add_safe_menu)
         self._remove_button = QPushButton("Remove")
         self._remove_button.clicked.connect(self._remove_selected)
         self._clear_button = QPushButton("Clear")
@@ -431,7 +436,6 @@ class MainWindow(QMainWindow):
         buttons = QHBoxLayout()
         buttons.addWidget(self._add_images_button)
         buttons.addWidget(self._add_safe_button)
-        buttons.addWidget(self._add_safe_zip_button)
         buttons.addStretch(1)
         buttons.addWidget(self._remove_button)
         buttons.addWidget(self._clear_button)
@@ -650,7 +654,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(
                 self,
                 "Not a SAFE folder",
-                "Choose a Sentinel-2 folder whose name ends in .SAFE, or use Add SAFE zips… for a .zip download.",
+                "Choose a Sentinel-2 folder whose name ends in .SAFE. For a .zip download, choose Zip downloads… "
+                "from Add Sentinel-2… instead.",
             )
             return
         self._add_paths([Path(path)])
@@ -707,7 +712,7 @@ class MainWindow(QMainWindow):
             if safe:
                 self._canvas.set_placeholder(
                     "Drop .SAFE folders or .zip downloads here",
-                    "Or use Add SAFE folder… or Add SAFE zips… to choose them",
+                    "Or use Add Sentinel-2… to choose them",
                 )
             else:
                 self._canvas.set_placeholder("Drop GeoTIFFs here", "Or use Add GeoTIFFs… to choose them")
@@ -838,7 +843,6 @@ class MainWindow(QMainWindow):
         self._add_images_action.setVisible(not safe)
         self._add_safe_button.setVisible(safe)
         self._add_safe_action.setVisible(safe)
-        self._add_safe_zip_button.setVisible(safe)
         self._add_safe_zip_action.setVisible(safe)
         self._revision_changed()
 
