@@ -29,6 +29,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+      actions: read  # The SignPath action reads the job and downloads the artifacts it signs
+    env:
+      # Windows builds are signed through SignPath on release tags and manual runs. Pull requests skip signing because
+      # they can't read the SignPath token. Release tags use the release-signing policy, which a maintainer approves in
+      # SignPath. Manual runs use test-signing, which needs no approval but makes signatures Windows doesn't trust.
+      SIGN: ${{ matrix.os == 'windows-latest' && github.event_name != 'pull_request' }}
+      SIGNING_POLICY: ${{ github.ref_type == 'tag' && 'release-signing' || 'test-signing' }}
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-${{ matrix.os }}
       cancel-in-progress: true
@@ -84,6 +91,37 @@ jobs:
         timeout-minutes: 15
         run: uv run --no-sync python packaging/smoke_test.py dist/habitat-mapper/hab dist/habitat-mapper/Habitat-Mapper
 
+      # The executables are signed before the installer is built so the installer packs the signed copies
+      - name: Upload the executables for signing
+        id: upload-unsigned-executables
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: unsigned-executables
+          path: |
+            dist/habitat-mapper/hab.exe
+            dist/habitat-mapper/Habitat-Mapper.exe
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Sign the executables
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b  # v3.2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: habitat-mapper
+          signing-policy-slug: ${{ env.SIGNING_POLICY }}
+          artifact-configuration-slug: executables
+          github-artifact-id: ${{ steps.upload-unsigned-executables.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600  # Leaves time for a maintainer to approve a release
+          output-artifact-directory: signed/executables
+
+      - name: Replace the executables with the signed copies
+        if: env.SIGN == 'true'
+        shell: bash
+        run: cp -f signed/executables/hab.exe signed/executables/Habitat-Mapper.exe dist/habitat-mapper/
+
       - name: Build the Windows installer
         if: runner.os == 'Windows'
         shell: bash
@@ -93,6 +131,46 @@ jobs:
           VERSION=$(uv run --no-sync python -c "from importlib.metadata import version; print(version('habitat-mapper'))")
           command -v iscc || choco install innosetup --no-progress -y
           iscc "/DAppVersion=$VERSION" packaging/windows/habitat-mapper.iss
+
+      - name: Upload the installer for signing
+        id: upload-unsigned-installer
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: unsigned-installer
+          path: dist/*.exe
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Sign the installer
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b  # v3.2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: habitat-mapper
+          signing-policy-slug: ${{ env.SIGNING_POLICY }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: signed/installer
+
+      - name: Replace the installer with the signed copy
+        if: env.SIGN == 'true'
+        shell: bash
+        run: cp -f signed/installer/*.exe dist/
+
+      # Test signatures don't chain to a trusted root, so only release signatures are checked
+      - name: Check the release signatures
+        if: env.SIGN == 'true' && github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $files = @(Get-Item dist/habitat-mapper/hab.exe, dist/habitat-mapper/Habitat-Mapper.exe, dist/*.exe)
+          $bad = $files | Get-AuthenticodeSignature | Where-Object Status -ne 'Valid'
+          if ($bad) {
+            $bad | Format-Table Path, Status, StatusMessage -AutoSize | Out-String -Width 200 | Write-Host
+            exit 1
+          }
 
       - name: Build the macOS disk image
         if: runner.os == 'macOS'

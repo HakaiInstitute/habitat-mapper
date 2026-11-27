@@ -32,7 +32,30 @@ This makes `dist/habitat-mapper/`, and `dist/Habitat-Mapper.app` on macOS. To ma
 - macOS: put `Habitat-Mapper.app` and a link to `/Applications` in a folder, then
   `hdiutil create -volname Habitat-Mapper -srcfolder <folder> -format UDZO Habitat-Mapper.dmg`.
 
-The installers aren't code signed, so Windows SmartScreen and macOS Gatekeeper warn about them the first time they run.
+The macOS disk image isn't code signed, so Gatekeeper warns about it the first time it runs.
+
+## Windows code signing
+
+Release builds of the Windows executables and installer are signed by [SignPath Foundation](https://signpath.org),
+which signs open-source projects for free. Windows shows "SignPath Foundation" as the publisher. The
+[desktop build workflow](../.github/workflows/desktop-build.yml) uploads `hab.exe` and `Habitat-Mapper.exe` for
+signing, builds the installer from the signed copies, then signs the installer.
+
+- Release tags use the `release-signing` policy. A maintainer approves each request in SignPath, and the job waits up
+  to an hour for that.
+- Manual runs of the workflow use `test-signing`, which needs no approval. Windows doesn't trust test signatures, so
+  use these runs to check the signing steps work, not to publish.
+- Pull requests aren't signed.
+
+The workflow needs the `SIGNPATH_API_TOKEN` secret and the `SIGNPATH_ORGANIZATION_ID` variable. The SignPath project
+is `habitat-mapper`, with the artifact configurations in [`windows/signpath/`](windows/signpath).
+
+Inno Setup's uninstaller (`unins000.exe`) isn't signed. Signing it would need Inno Setup to call the signing service
+while it builds.
+
+Code signing policy: the maintainers listed in [CODEOWNERS](../CODEOWNERS) review changes and approve each release
+signing request. Apart from reading images from URLs the user gives it, the app only goes online to download models
+and check GitHub for new releases. It sends no other data.
 
 ## App icon
 
