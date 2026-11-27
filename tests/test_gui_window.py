@@ -19,10 +19,11 @@ if not os.environ.get("HAB_REQUIRE_QT_TESTS"):
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtWidgets import QLabel, QMessageBox  # noqa: E402
+from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox  # noqa: E402
 
 from habitat_mapper.config import OutputClass  # noqa: E402
-from habitat_mapper.gui import app as app_module, batch as batch_module  # noqa: E402
+from habitat_mapper.gui import app as app_module, batch as batch_module, theme  # noqa: E402
 from habitat_mapper.gui.batch import Status  # noqa: E402
 from habitat_mapper.registry import ModelRegistry, model_registry  # noqa: E402
 from tests.helpers import tiny_model_config, write_raster, write_tiny_model  # noqa: E402
@@ -204,3 +205,28 @@ def test_choosing_a_sentinel_2_model_offers_safe_inputs(window: app_module.MainW
     assert not window._add_images_button.isVisibleTo(window)
     assert window._add_safe_button.isVisibleTo(window)
     assert window._add_safe_zip_button.isVisibleTo(window)
+
+
+def test_switching_to_dark_mode_recolours_muted_text_and_statuses(
+    window: app_module.MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
+    app = QApplication.instance()
+    assert isinstance(app, QApplication)
+    request.addfinalizer(lambda: app.setStyleSheet(""))
+    window._add_paths(_images(tmp_path, 2))
+    window._set_status(0, Status.DONE)
+
+    monkeypatch.setattr(theme, "is_dark", lambda: True)
+    QGuiApplication.styleHints().colorSchemeChanged.emit(Qt.ColorScheme.Dark)
+
+    # macOS's placeholder text colour, which muted text used before, can't be read on a dark window
+    assert "QLabel#muted { color: rgba(255, 255, 255, 140); }" in app.styleSheet()
+    assert "placeholder-text" not in app.styleSheet()
+    assert window._queue.item(0, 1).foreground().color() == QColor(theme.DONE_ON_DARK)
+    assert window._queue.item(0, 1).text() == "Done"
+
+    monkeypatch.setattr(theme, "is_dark", lambda: False)
+    QGuiApplication.styleHints().colorSchemeChanged.emit(Qt.ColorScheme.Light)
+
+    assert "QLabel#muted { color: rgba(0, 0, 0, 128); }" in app.styleSheet()
+    assert window._queue.item(0, 1).foreground().color() == QColor(theme.DONE)
