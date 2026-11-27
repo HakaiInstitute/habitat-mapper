@@ -186,6 +186,19 @@ def _swatch(colour: str, border: str | None = None, haze: bool = False) -> QLabe
     return swatch
 
 
+def _colour_status(cell: QTableWidgetItem, status: Status) -> None:
+    """Colour an image's status cell for the current light or dark mode."""
+    colours = {
+        Status.RUNNING: theme.running_colour(),
+        Status.DONE: theme.done_colour(),
+        Status.FAILED: theme.failed_colour(),
+    }
+    colour = colours.get(status, theme.muted_colour())
+    if status in colours:
+        cell.setForeground(colour)
+    cell.setIcon(_dot(colour))
+
+
 def _muted(text: str = "") -> QLabel:
     label = QLabel(text)
     label.setObjectName("muted")
@@ -238,6 +251,7 @@ class MainWindow(QMainWindow):
         self._tray = TrayIcon(self, self._cancel)
         self._connect_log_pane()
         self._show_expected_device()
+        QGuiApplication.styleHints().colorSchemeChanged.connect(self._follow_colour_scheme)
         self._model.currentIndexChanged.connect(self._model_changed)
         self._revision.currentIndexChanged.connect(self._revision_changed)
         self._model_changed()
@@ -775,21 +789,22 @@ class MainWindow(QMainWindow):
         item = self._batch.items[row]
         item.status = status
         item.error = error or None
-        colours = {
-            Status.RUNNING: theme.running_colour(),
-            Status.DONE: theme.done_colour(),
-            Status.FAILED: theme.failed_colour(),
-        }
         cell = QTableWidgetItem(status.value)
         cell.setToolTip(error)
-        if status in colours:
-            cell.setForeground(colours[status])
-            cell.setIcon(_dot(colours[status]))
-        else:
-            cell.setIcon(_dot(self.palette().placeholderText().color()))
+        _colour_status(cell, status)
         if status is Status.RUNNING:
             cell.setData(_PROGRESS_ROLE, 0.0)
         self._queue.setItem(row, 1, cell)
+
+    def _follow_colour_scheme(self) -> None:
+        """Recolour the app for the system's light or dark mode, after the system switches."""
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            app.setStyleSheet(theme.style_sheet())
+        for row, item in enumerate(self._batch.items):
+            cell = self._queue.item(row, 1)
+            if cell is not None:
+                _colour_status(cell, item.status)
 
     def _queue_menu(self, position: QPoint) -> None:
         row = self._queue.rowAt(position.y())
@@ -1201,7 +1216,7 @@ def main() -> None:
     app.setOrganizationName("Hakai Institute")
     # Frozen builds also embed the icon in the executable or app bundle; this covers running from source
     app.setWindowIcon(QIcon(str(Path(__file__).with_name("icon.png"))))
-    app.setStyleSheet(theme.STYLE_SHEET)
+    app.setStyleSheet(theme.style_sheet())
     window = MainWindow()
     window.show()
     # Used by CI to check that a frozen build can start

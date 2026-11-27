@@ -20,6 +20,10 @@ DONE_ON_DARK = "#5CC08F"
 FAILED = "#B3261E"
 FAILED_ON_DARK = "#FF8A80"
 WHITE = "#FFFFFF"
+# Secondary text, matching macOS's secondary label colour. The platform's placeholder text colour is a quarter opaque
+# on macOS, which can't be read on a dark window.
+MUTED = (0, 0, 0, 128)
+MUTED_ON_DARK = (255, 255, 255, 140)
 
 
 def is_dark() -> bool:
@@ -58,8 +62,27 @@ def failed_colour() -> QColor:
     return QColor(FAILED_ON_DARK if is_dark() else FAILED)
 
 
-# Styles for named widgets only, so everything else keeps the platform's look
-STYLE_SHEET = f"""
+def muted_colour() -> QColor:
+    """Colour for secondary text, and for an image waiting to be processed.
+
+    Returns:
+        The colour for the current light or dark mode.
+    """
+    return QColor(*(MUTED_ON_DARK if is_dark() else MUTED))
+
+
+def style_sheet() -> str:
+    """Styles for named widgets only, so everything else keeps the platform's look.
+
+    Apply it again when the system switches between light and dark mode.
+
+    Returns:
+        The style sheet for the current light or dark mode.
+    """
+    dark = is_dark()
+    muted = "rgba({}, {}, {}, {})".format(*(MUTED_ON_DARK if dark else MUTED))
+    ochre_text = OCHRE if dark else OCHRE_TEXT
+    return f"""
 QPushButton#runButton {{
     background: {OCHRE};
     color: {TEAL};
@@ -93,9 +116,9 @@ QLabel#stepNumber {{
     font-weight: 600;
 }}
 QLabel#stepTitle {{ font-weight: 600; }}
-QLabel#muted {{ color: palette(placeholder-text); }}
+QLabel#muted {{ color: {muted}; }}
 QLabel#betaTag {{
-    color: {OCHRE_TEXT};
+    color: {ochre_text};
     border: 1px solid {OCHRE};
     border-radius: 4px;
     padding: 0 5px;
@@ -113,7 +136,7 @@ QFrame#infoBar QPushButton {{
 }}
 QFrame#infoBar QToolButton {{ color: {WHITE}; border: none; padding: 2px 6px; }}
 
-QToolButton#quietButton {{ border: none; color: palette(placeholder-text); padding: 4px 6px; }}
+QToolButton#quietButton {{ border: none; color: {muted}; padding: 4px 6px; }}
 QToolButton#quietButton:hover, QToolButton#quietButton:checked {{ color: palette(text); }}
 
 QToolButton#canvasButton {{
